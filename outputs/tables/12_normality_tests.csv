@@ -1,0 +1,7 @@
+column,sample_size,shapiro_p_value,dagostino_p_value,skewness,excess_kurtosis,interpretation
+approval_hours,5000,2.4342966306244317e-77,0.0,3.7335580150235876,26.20890267879424,Not approximately normal
+payment_count,5000,1.7309634755339022e-93,0.0,15.835065845260893,335.9021626866479,Not approximately normal
+total_freight_value,5000,2.5988747625026986e-78,0.0,6.067456601230532,63.34848997219615,Not approximately normal
+total_item_price,5000,4.614970901776977e-88,0.0,22.815191767305098,897.5772473811305,Not approximately normal
+total_payment_value,5000,4.035087956837944e-79,0.0,5.443402116774231,43.653651684578485,Not approximately normal
+avg_item_price,5000,3.4731717390143985e-84,0.0,10.352837236672434,207.54557616356317,Not approximately normal

@@ -1,0 +1,27 @@
+column,skewness,classification,high_skew
+approval_hours,56.97529052056089,Highly skewed,True
+payment_count,23.948637016006188,Highly skewed,True
+review_count,13.556470385151876,Highly skewed,True
+total_freight_value,12.052722636430127,Highly skewed,True
+total_item_price,9.72774072310121,Highly skewed,True
+total_payment_value,9.150169418280006,Highly skewed,True
+unique_products,8.1072175086578,Highly skewed,True
+avg_item_price,7.761884170898605,Highly skewed,True
+total_items,7.527005581709165,Highly skewed,True
+avg_freight_value,5.618367952042231,Highly skewed,True
+avg_product_weight_g,3.6119903090047636,Highly skewed,True
+delivery_late,3.0683278235066758,Highly skewed,True
+review_comment_titles,2.393294464167001,Highly skewed,True
+avg_product_height_cm,2.261836676678248,Highly skewed,True
+avg_product_length_cm,1.7687332813995558,Highly skewed,True
+avg_product_width_cm,1.7183851748161822,Highly skewed,True
+avg_payment_installments,1.6054028089764034,Highly skewed,True
+max_payment_installments,1.5994121731450104,Highly skewed,True
+avg_review_score,-1.3647568232672425,Highly skewed,True
+customer_zip_code_prefix,0.7790250646607624,Moderately skewed,False
+order_purchase_hour,-0.6018493571974568,Moderately skewed,False
+review_comment_messages,0.37978475106780935,Approximately symmetric,False
+order_purchase_year,-0.23688821674896196,Approximately symmetric,False
+order_purchase_month,0.20630207887921664,Approximately symmetric,False
+order_purchase_weekday,0.1677253579696457,Approximately symmetric,False
+order_purchase_day,0.024265980185755397,Approximately symmetric,False

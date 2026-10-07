@@ -1,0 +1,27 @@
+column,excess_kurtosis,classification,high_kurtosis
+approval_hours,9122.952160456058,Strongly heavy/light-tailed,True
+payment_count,1008.6735655959975,Strongly heavy/light-tailed,True
+total_freight_value,565.3417320054863,Strongly heavy/light-tailed,True
+total_item_price,266.0669390206724,Strongly heavy/light-tailed,True
+total_payment_value,233.40652265467577,Strongly heavy/light-tailed,True
+review_count,186.74385778382336,Strongly heavy/light-tailed,True
+avg_item_price,115.3885465060407,Strongly heavy/light-tailed,True
+total_items,114.85034084882795,Strongly heavy/light-tailed,True
+unique_products,98.79139775522493,Strongly heavy/light-tailed,True
+avg_freight_value,58.81788409396708,Strongly heavy/light-tailed,True
+avg_product_weight_g,16.454890511361892,Strongly heavy/light-tailed,True
+avg_product_height_cm,7.518077247618031,Strongly heavy/light-tailed,True
+delivery_late,7.4147893446950945,Strongly heavy/light-tailed,True
+avg_product_width_cm,4.603829679571886,Strongly heavy/light-tailed,True
+avg_product_length_cm,3.7900385329027206,Strongly heavy/light-tailed,True
+review_comment_titles,3.784076304377846,Strongly heavy/light-tailed,True
+avg_payment_installments,2.3537062477402038,Moderately heavy/light-tailed,False
+max_payment_installments,2.352540654742142,Moderately heavy/light-tailed,False
+review_comment_messages,-1.7579911073640633,Moderately heavy/light-tailed,False
+order_purchase_year,-1.747371678204581,Moderately heavy/light-tailed,False
+order_purchase_day,-1.176606860872412,Moderately heavy/light-tailed,False
+order_purchase_weekday,-1.1669754284834855,Moderately heavy/light-tailed,False
+order_purchase_month,-0.9788345901649156,Typical,False
+customer_zip_code_prefix,-0.7882039256354698,Typical,False
+avg_review_score,0.5114882798427431,Typical,False
+order_purchase_hour,0.1820016578182262,Typical,False

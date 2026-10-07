@@ -1,0 +1,27 @@
+group_variable,group,target,count,mean,median,std
+order_status,approved,customer_zip_code_prefix,2.0,21922.5,21922.5,19328.763863734275
+order_status,canceled,customer_zip_code_prefix,625.0,28559.2864,18055.0,27895.262321755912
+order_status,created,customer_zip_code_prefix,5.0,58413.4,73401.0,36814.83725755147
+order_status,delivered,customer_zip_code_prefix,96478.0,35198.18535832003,24435.0,29839.705391855154
+order_status,invoiced,customer_zip_code_prefix,314.0,32384.678343949046,18935.0,29678.994763754086
+order_status,processing,customer_zip_code_prefix,301.0,35325.109634551496,23510.0,29944.36230808631
+order_status,shipped,customer_zip_code_prefix,1107.0,35714.94037940379,25902.0,26772.558277928652
+order_status,unavailable,customer_zip_code_prefix,609.0,32399.886699507388,21050.0,29357.091707653024
+payment_types,boleto,customer_zip_code_prefix,19784.0,37364.673018600886,26548.0,31079.8363466097
+payment_types,credit_card,customer_zip_code_prefix,74259.0,34663.88742105334,24240.0,29476.02650836303
+payment_types,credit_card | debit_card,customer_zip_code_prefix,1.0,68700.0,68700.0,
+payment_types,credit_card | voucher,customer_zip_code_prefix,2245.0,35779.680178173716,26261.0,29249.902661418902
+payment_types,debit_card,customer_zip_code_prefix,1527.0,31114.565160445316,20081.0,29172.836526998435
+payment_types,not_defined,customer_zip_code_prefix,3.0,4626.0,4685.0,3445.878842907858
+payment_types,voucher,customer_zip_code_prefix,1621.0,32598.890808143122,23030.0,28252.793694373577
+unique_products,1.0,customer_zip_code_prefix,95430.0,35215.802651157916,24440.0,29809.565072882135
+unique_products,2.0,customer_zip_code_prefix,2846.0,33378.50070274069,22794.0,29397.227892022416
+unique_products,3.0,customer_zip_code_prefix,298.0,32176.0,22773.0,28446.417762911515
+unique_products,4.0,customer_zip_code_prefix,70.0,39133.84285714286,25124.0,32905.06709697015
+unique_products,5.0,customer_zip_code_prefix,8.0,16951.75,12377.5,20252.741442297913
+unique_products,6.0,customer_zip_code_prefix,10.0,59043.3,79335.0,37970.44838657792
+unique_products,7.0,customer_zip_code_prefix,3.0,30016.333333333332,39401.0,16403.901283942592
+unique_products,8.0,customer_zip_code_prefix,1.0,14610.0,14610.0,
+review_count,1.0,customer_zip_code_prefix,98126.0,35150.98224731468,24412.0,29819.097773056266
+review_count,2.0,customer_zip_code_prefix,543.0,35673.72744014733,24905.0,30172.955417748555
+review_count,3.0,customer_zip_code_prefix,4.0,38502.5,25955.0,36917.21673781308

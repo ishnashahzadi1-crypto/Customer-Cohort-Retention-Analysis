@@ -1,0 +1,8 @@
+id_like_column
+order_id
+customer_id
+order_purchase_timestamp
+order_delivered_customer_date
+customer_unique_id
+delivery_days
+delivery_delay_days

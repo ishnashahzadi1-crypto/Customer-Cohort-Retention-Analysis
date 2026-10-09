@@ -1,0 +1,6 @@
+Model,Best_ROC_AUC,Best_Params
+Logistic Regression,0.5319542609647556,{'C': 0.010653084679391422}
+Decision Tree,0.5358577325094066,"{'max_depth': 6, 'min_samples_leaf': 6}"
+Random Forest,0.5360110949816096,"{'n_estimators': 227, 'max_depth': 6, 'min_samples_leaf': 3, 'max_features': 'sqrt'}"
+Extra Trees,0.5337060305825923,"{'n_estimators': 228, 'max_depth': 9, 'min_samples_leaf': 10, 'max_features': 'sqrt'}"
+HistGradientBoosting,0.5319443452876735,"{'max_iter': 89, 'learning_rate': 0.02188599776265255, 'max_leaf_nodes': 26, 'l2_regularization': 9.745860058288143}"

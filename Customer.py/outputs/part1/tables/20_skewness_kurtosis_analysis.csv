@@ -1,0 +1,6 @@
+feature,skewness,kurtosis,skewness_interpretation
+total_orders,11.862408111348048,421.39060492615573,Strong positive skew
+total_spend,9.082549683115447,227.9479156053017,Strong positive skew
+average_order_value,9.278376186433238,243.17754288888216,Strong positive skew
+customer_lifetime_days,12.177061942743928,170.92689028955542,Strong positive skew
+days_since_last_purchase,0.44544991341884826,-0.6546290619341719,Approximately symmetric/moderate skew

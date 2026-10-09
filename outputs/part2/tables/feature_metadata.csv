@@ -1,0 +1,6 @@
+feature,dtype,missing_count,unique_values
+observation_orders,int64,0,5
+recency_days,int64,0,91
+observation_active_days,int64,0,91
+purchase_frequency,float64,0,120
+log_order_count,float64,0,5

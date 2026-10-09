@@ -1,0 +1,14 @@
+metric,value
+Initial rows,99441
+Initial columns,21
+Final transaction rows,99441
+Unique customers,96096
+Unique orders,99441
+Repeat customers,2997
+One-time customers,93099
+Repeat customer percentage,3.1187562437562435
+One-time customer percentage,96.88124375624375
+Total spend,15843553.24
+Analysis start date,2016-09-04 21:15:19
+Analysis end date,2018-10-17 17:30:18
+Number of cohorts,25

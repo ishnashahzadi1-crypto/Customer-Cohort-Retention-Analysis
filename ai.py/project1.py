@@ -1,258 +1,953 @@
 # ============================================================
-# OLIST E-COMMERCE DATASET
-# COMPLETE PROFESSIONAL EDA + STATISTICAL TESTING
-# FAST + CLEAN + GITHUB READY
+# CUSTOMER COHORT RETENTION ANALYSIS
+# PART 1 — HISTORICAL RETENTION ANALYSIS
+#
+# Purpose:
+# Track retention rates across acquisition cohorts to understand
+# long-term customer engagement, repeat-purchase behavior,
+# customer loyalty patterns, and retained vs non-retained behavior.
+#
+# Designed for:
+# - OLIST merged dataset
+# - VS Code / Windows
+# - Professional portfolio / GitHub
+# - Fast + memory-conscious processing
+#
+# RANDOM_STATE = 42
 # ============================================================
 
-# ============================================================
-# 0. IMPORT LIBRARIES
-# ============================================================
-
-import os
-import warnings
 from pathlib import Path
+import warnings
+import math
 
 import numpy as np
 import pandas as pd
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 from scipy import stats
 from scipy.stats import (
-    shapiro,
-    normaltest,
-    levene,
-    bartlett,
     ttest_ind,
     mannwhitneyu,
-    f_oneway,
-    kruskal,
     chi2_contingency,
-    pearsonr,
-    spearmanr
+    levene,
 )
 
 from sklearn.preprocessing import PowerTransformer
 from sklearn.linear_model import LinearRegression
 
+warnings.filterwarnings("ignore")
 
 # ============================================================
 # 1. CONFIGURATION
 # ============================================================
 
-warnings.filterwarnings("ignore")
-
 RANDOM_STATE = 42
 
-MAX_SAMPLE = 5000
-MAX_PLOT_SAMPLE = 20000
-MAX_NORMALITY_SAMPLE = 5000
-
-Z_THRESHOLD = 3
-
-SKEW_HIGH = 1
-KURTOSIS_HIGH = 3
-
-MAX_DISTRIBUTION_VARS = 8
-MAX_BOXPLOT_VARS = 10
-MAX_CATEGORICAL_VARS = 6
-MAX_CORRELATION_VARS = 12
-MAX_QQ_VARS = 6
-MAX_GROUP_VARS = 4
-MAX_TEST_PAIRS = 25
-MAX_VIF_VARS = 15
-
-# ============================================================
-# PROJECT DIRECTORIES
-# ============================================================
-
-PROJECT_ROOT = Path("C:\\Users\\Hp\\Documents\\New folder\\olist_6_files_merged.csv").resolve().parent
-
-DATA_DIR = PROJECT_ROOT / "data"
+PROJECT_ROOT = Path("Customer.py/olist_customer_cohort_retention_comprehensive.csv").resolve().parent
 
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
-PLOT_DIR = OUTPUT_DIR / "plots"
+
 TABLE_DIR = OUTPUT_DIR / "tables"
+PLOT_DIR = OUTPUT_DIR / "plots"
 REPORT_DIR = OUTPUT_DIR / "reports"
 
-PLOT_DIR.mkdir(parents=True, exist_ok=True)
-TABLE_DIR.mkdir(parents=True, exist_ok=True)
-REPORT_DIR.mkdir(parents=True, exist_ok=True)
+for folder in [TABLE_DIR, PLOT_DIR, REPORT_DIR]:
+    folder.mkdir(parents=True, exist_ok=True)
+
+sns.set_theme(style="whitegrid")
+
+# ============================================================
+# 2. DATASET FINDER
+# ============================================================
+
+POSSIBLE_FILES = [
+    PROJECT_ROOT / "olist_6_files_merged(1).csv",
+    PROJECT_ROOT / "olist_6_files_merged.csv",
+    PROJECT_ROOT / "olist_6_files_merged(2).csv",
+    PROJECT_ROOT / "olist.csv",
+    PROJECT_ROOT / "data" / "olist_6_files_merged(1).csv",
+    PROJECT_ROOT / "data" / "olist_6_files_merged.csv",
+    PROJECT_ROOT / "data" / "olist.csv",
+]
+
+
+def find_dataset():
+    """Find the first available OLIST dataset."""
+
+    for path in POSSIBLE_FILES:
+        if path.exists():
+            return path
+
+    csv_files = list(PROJECT_ROOT.glob("*.csv"))
+
+    if not csv_files:
+        data_dir = PROJECT_ROOT / "data"
+        if data_dir.exists():
+            csv_files = list(data_dir.glob("*.csv"))
+
+    if csv_files:
+        return csv_files[0]
+
+    raise FileNotFoundError(
+        "\nNo CSV dataset found.\n"
+        "Place your OLIST merged CSV in the project folder or data/ folder."
+    )
+
+
+DATA_PATH = find_dataset()
+
+print("=" * 80)
+print("CUSTOMER COHORT RETENTION ANALYSIS — PART 1")
+print("=" * 80)
+print(f"Dataset: {DATA_PATH}")
+print("=" * 80)
 
 
 # ============================================================
-# 2. PLOT STYLE
+# 3. LOAD DATA
 # ============================================================
 
-sns.set_theme(
-    style="whitegrid",
-    context="notebook"
+df = pd.read_csv(DATA_PATH, low_memory=False)
+
+print("\nDATA LOADED")
+print("-" * 80)
+print(f"Rows    : {df.shape[0]:,}")
+print(f"Columns : {df.shape[1]:,}")
+
+
+# ============================================================
+# 4. COLUMN NORMALIZATION
+# ============================================================
+
+df.columns = (
+    df.columns
+    .str.strip()
+    .str.lower()
+    .str.replace(" ", "_", regex=False)
 )
 
-plt.rcParams["figure.dpi"] = 120
-plt.rcParams["savefig.dpi"] = 150
-plt.rcParams["axes.titlesize"] = 13
-plt.rcParams["axes.labelsize"] = 11
-plt.rcParams["xtick.labelsize"] = 9
-plt.rcParams["ytick.labelsize"] = 9
-
 
 # ============================================================
-# 3. HELPER FUNCTIONS
+# 5. HELPER FUNCTIONS
 # ============================================================
+
+def save_csv(dataframe, filename):
+    path = TABLE_DIR / filename
+    dataframe.to_csv(path, index=False)
+    return path
+
 
 def save_plot(filename):
-    """Save plot with clean layout."""
+    path = PLOT_DIR / filename
     plt.tight_layout()
-    plt.savefig(
-        PLOT_DIR / filename,
-        bbox_inches="tight"
-    )
+    plt.savefig(path, dpi=180, bbox_inches="tight")
     plt.close()
+    return path
 
 
-def safe_sample(series, n=MAX_SAMPLE):
-    """Return random sample without exceeding available rows."""
-    series = series.dropna()
+def detect_column(candidates, required=True):
+    """
+    Find a column using several possible names.
+    """
 
-    if len(series) > n:
-        return series.sample(
-            n=n,
-            random_state=RANDOM_STATE
+    for candidate in candidates:
+        candidate = candidate.lower()
+
+        if candidate in df.columns:
+            return candidate
+
+    if required:
+        raise ValueError(
+            "\nRequired column not found.\n"
+            f"Expected one of: {candidates}\n"
+            f"Available columns:\n{list(df.columns)}"
         )
 
-    return series
-
-
-def interpretation_strength(value):
-    """Interpret absolute effect/correlation strength."""
-    value = abs(value)
-
-    if value < 0.10:
-        return "Negligible"
-    elif value < 0.30:
-        return "Small"
-    elif value < 0.50:
-        return "Moderate"
-    else:
-        return "Strong"
+    return None
 
 
 def cramers_v(table):
-    """Bias-corrected Cramer's V."""
-    chi2, p, dof, expected = chi2_contingency(table)
+    """Calculate Cramer's V."""
 
-    n = table.sum().sum()
+    if table.empty:
+        return np.nan
 
-    if n <= 1:
+    chi2 = chi2_contingency(table)[0]
+    n = table.values.sum()
+
+    if n == 0:
+        return np.nan
+
+    r, k = table.shape
+
+    if min(r, k) <= 1:
         return np.nan
 
     phi2 = chi2 / n
-    rows, cols = table.shape
 
-    phi2corr = max(
+    correction = max(
         0,
-        phi2 - ((cols - 1) * (rows - 1)) / (n - 1)
+        phi2 - ((k - 1) * (r - 1)) / (n - 1)
     )
 
-    rcorr = rows - (
-        (rows - 1) ** 2 / (n - 1)
-    )
+    corrected_r = r - ((r - 1) ** 2) / (n - 1)
+    corrected_k = k - ((k - 1) ** 2) / (n - 1)
 
-    ccorr = cols - (
-        (cols - 1) ** 2 / (n - 1)
-    )
-
-    denominator = min(ccorr - 1, rcorr - 1)
+    denominator = min(corrected_k - 1, corrected_r - 1)
 
     if denominator <= 0:
         return np.nan
 
-    return np.sqrt(phi2corr / denominator)
+    return math.sqrt(correction / denominator)
 
 
-def cohens_d(x, y):
-    """Calculate Cohen's d."""
-    x = np.asarray(x)
-    y = np.asarray(y)
+# ============================================================
+# 6. COLUMN DETECTION
+# ============================================================
 
-    nx = len(x)
-    ny = len(y)
+customer_col = detect_column(
+    [
+        "customer_unique_id",
+        "customer_id"
+    ]
+)
 
-    if nx < 2 or ny < 2:
-        return np.nan
+order_col = detect_column(
+    [
+        "order_id"
+    ]
+)
 
-    vx = np.var(x, ddof=1)
-    vy = np.var(y, ddof=1)
+date_col = detect_column(
+    [
+        "order_purchase_timestamp",
+        "purchase_timestamp",
+        "order_date",
+        "purchase_date"
+    ]
+)
 
-    pooled_sd = np.sqrt(
-        ((nx - 1) * vx + (ny - 1) * vy)
-        / (nx + ny - 2)
+price_col = detect_column(
+    [
+        "price",
+        "order_price",
+        "total_price"
+    ],
+    required=False
+)
+
+freight_col = detect_column(
+    [
+        "freight_value",
+        "shipping_cost",
+        "freight"
+    ],
+    required=False
+)
+
+order_status_col = detect_column(
+    [
+        "order_status"
+    ],
+    required=False
+)
+
+print("\nDETECTED COLUMNS")
+print("-" * 80)
+print(f"Customer : {customer_col}")
+print(f"Order    : {order_col}")
+print(f"Date     : {date_col}")
+print(f"Price    : {price_col}")
+print(f"Freight  : {freight_col}")
+print(f"Status   : {order_status_col}")
+
+
+# ============================================================
+# 7. DATA QUALITY
+# ============================================================
+
+quality_rows = []
+
+for col in df.columns:
+
+    quality_rows.append(
+        {
+            "column": col,
+            "dtype": str(df[col].dtype),
+            "rows": len(df),
+            "missing_count": int(df[col].isna().sum()),
+            "missing_pct": round(
+                df[col].isna().mean() * 100, 4
+            ),
+            "unique_count": int(df[col].nunique(dropna=True)),
+            "unique_pct": round(
+                df[col].nunique(dropna=True) / len(df) * 100,
+                4
+            ),
+        }
     )
 
-    if pooled_sd == 0:
-        return np.nan
+quality_summary = pd.DataFrame(quality_rows)
 
-    return (np.mean(x) - np.mean(y)) / pooled_sd
+save_csv(
+    quality_summary,
+    "01_data_quality_summary.csv"
+)
 
 
-def rank_biserial(x, y):
-    """Signed rank-biserial effect size."""
-    x = np.asarray(x)
-    y = np.asarray(y)
+# ============================================================
+# 8. REMOVE DUPLICATE EXACT ROWS
+# ============================================================
 
-    n1 = len(x)
-    n2 = len(y)
+initial_rows = len(df)
 
-    if n1 == 0 or n2 == 0:
-        return np.nan
+df = df.drop_duplicates().copy()
 
-    result = mannwhitneyu(
-        x,
-        y,
-        alternative="two-sided"
+duplicates_removed = initial_rows - len(df)
+
+print("\nDATA CLEANING")
+print("-" * 80)
+print(f"Duplicate rows removed: {duplicates_removed:,}")
+
+
+# ============================================================
+# 9. DATE PARSING
+# ============================================================
+
+df[date_col] = pd.to_datetime(
+    df[date_col],
+    errors="coerce"
+)
+
+invalid_dates = int(df[date_col].isna().sum())
+
+print(f"Invalid/missing purchase dates: {invalid_dates:,}")
+
+
+# ============================================================
+# 10. VALID PURCHASE FILTER
+# ============================================================
+
+valid_mask = (
+    df[customer_col].notna()
+    & df[order_col].notna()
+    & df[date_col].notna()
+)
+
+if order_status_col:
+
+    valid_statuses = [
+        "delivered"
+    ]
+
+    status_mask = (
+        df[order_status_col]
+        .astype(str)
+        .str.lower()
+        .isin(valid_statuses)
     )
 
-    u = result.statistic
+    # If delivered rows exist, use them.
+    # Otherwise keep all valid orders instead of returning
+    # an empty dataset.
+    if status_mask.sum() > 0:
+        valid_mask &= status_mask
 
-    return (2 * u) / (n1 * n2) - 1
+retention_df = df.loc[valid_mask].copy()
+
+print(f"Valid purchase rows: {len(retention_df):,}")
 
 
-def eta_squared(groups):
-    """Calculate eta squared."""
-    all_values = np.concatenate(groups)
+# ============================================================
+# 11. REMOVE INVALID NUMERIC VALUES
+# ============================================================
 
-    grand_mean = np.mean(all_values)
+if price_col:
 
-    ss_between = sum(
-        len(g) * (np.mean(g) - grand_mean) ** 2
-        for g in groups
+    retention_df[price_col] = pd.to_numeric(
+        retention_df[price_col],
+        errors="coerce"
     )
 
-    ss_total = np.sum(
-        (all_values - grand_mean) ** 2
+    retention_df.loc[
+        retention_df[price_col] < 0,
+        price_col
+    ] = np.nan
+
+if freight_col:
+
+    retention_df[freight_col] = pd.to_numeric(
+        retention_df[freight_col],
+        errors="coerce"
     )
 
-    if ss_total == 0:
-        return np.nan
+    retention_df.loc[
+        retention_df[freight_col] < 0,
+        freight_col
+    ] = np.nan
 
-    return ss_between / ss_total
+
+# ============================================================
+# 12. CREATE ORDER-LEVEL DATASET
+# ============================================================
+
+order_group = [
+    customer_col,
+    order_col,
+    date_col
+]
+
+agg_dict = {}
+
+if price_col:
+    agg_dict[price_col] = "sum"
+
+if freight_col:
+    agg_dict[freight_col] = "sum"
+
+order_df = (
+    retention_df
+    .groupby(order_group, as_index=False)
+    .agg(agg_dict)
+)
+
+# Rename numeric fields
+if price_col:
+    order_df["order_value"] = order_df[price_col]
+else:
+    order_df["order_value"] = np.nan
+
+if freight_col:
+    order_df["freight_value"] = order_df[freight_col]
+else:
+    order_df["freight_value"] = np.nan
 
 
-def apply_fdr(df, p_column="p_value"):
-    """Benjamini-Hochberg FDR correction."""
-    if df.empty or p_column not in df.columns:
-        return df
+# ============================================================
+# 13. MONTHLY ORDER ACTIVITY
+# ============================================================
 
-    result = df.copy()
+order_df["purchase_month"] = (
+    order_df[date_col]
+    .dt.to_period("M")
+)
 
-    p_values = result[p_column].fillna(1).values
+order_df["purchase_month_date"] = (
+    order_df["purchase_month"]
+    .dt.to_timestamp()
+)
 
-    order = np.argsort(p_values)
 
-    sorted_p = p_values[order]
+# ============================================================
+# 14. CUSTOMER FIRST PURCHASE
+# ============================================================
 
-    n = len(sorted_p)
+first_purchase = (
+    order_df
+    .groupby(customer_col)[date_col]
+    .min()
+    .rename("first_purchase_date")
+)
+
+last_purchase = (
+    order_df
+    .groupby(customer_col)[date_col]
+    .max()
+    .rename("last_purchase_date")
+)
+
+
+# ============================================================
+# 15. CUSTOMER-LEVEL FEATURE ENGINEERING
+# ============================================================
+
+customer_features = (
+    order_df
+    .groupby(customer_col)
+    .agg(
+        total_orders=(order_col, "nunique"),
+        total_spend=("order_value", "sum"),
+        average_order_value=("order_value", "mean"),
+        total_freight=("freight_value", "sum"),
+        active_months=("purchase_month", "nunique"),
+    )
+    .reset_index()
+)
+
+customer_features = customer_features.merge(
+    first_purchase.reset_index(),
+    on=customer_col,
+    how="left"
+)
+
+customer_features = customer_features.merge(
+    last_purchase.reset_index(),
+    on=customer_col,
+    how="left"
+)
+
+customer_features["customer_lifetime_days"] = (
+    customer_features["last_purchase_date"]
+    - customer_features["first_purchase_date"]
+).dt.days
+
+customer_features["repeat_customer"] = (
+    customer_features["total_orders"] > 1
+).astype(int)
+
+customer_features["retained_customer"] = (
+    customer_features["active_months"] > 1
+).astype(int)
+
+
+# ============================================================
+# 16. ACQUISITION COHORT
+# ============================================================
+
+customer_features["cohort_month"] = (
+    customer_features["first_purchase_date"]
+    .dt.to_period("M")
+)
+
+customer_features["cohort_month_date"] = (
+    customer_features["cohort_month"]
+    .dt.to_timestamp()
+)
+
+
+# ============================================================
+# 17. RETENTION DEFINITION
+# ============================================================
+
+# Historical retention definition:
+#
+# Retained customer = customer made purchases in more than
+# one calendar month during the observed dataset period.
+#
+# Non-retained = customer purchased in only one calendar month.
+#
+# This definition is appropriate for Part 1 historical analysis.
+#
+# IMPORTANT:
+# It does NOT mean that a customer will never return in the future.
+# It only describes behavior inside the available observation window.
+
+
+# ============================================================
+# 18. SAVE CUSTOMER SUMMARY
+# ============================================================
+
+customer_summary_cols = [
+    customer_col,
+    "first_purchase_date",
+    "last_purchase_date",
+    "cohort_month_date",
+    "total_orders",
+    "total_spend",
+    "average_order_value",
+    "total_freight",
+    "active_months",
+    "customer_lifetime_days",
+    "repeat_customer",
+    "retained_customer",
+]
+
+customer_features[
+    customer_summary_cols
+].to_csv(
+    TABLE_DIR / "02_customer_summary.csv",
+    index=False
+)
+
+customer_features[
+    customer_summary_cols
+].to_csv(
+    TABLE_DIR / "04_customer_features.csv",
+    index=False
+)
+
+
+# ============================================================
+# 19. MONTHLY CUSTOMER ACTIVITY
+# ============================================================
+
+monthly_customer_activity = (
+    order_df[
+        [
+            customer_col,
+            "purchase_month",
+            "purchase_month_date"
+        ]
+    ]
+    .drop_duplicates()
+)
+
+monthly_active = (
+    monthly_customer_activity
+    .groupby("purchase_month_date")[customer_col]
+    .nunique()
+    .reset_index(name="active_customers")
+)
+
+monthly_orders = (
+    order_df
+    .groupby("purchase_month_date")[order_col]
+    .nunique()
+    .reset_index(name="orders")
+)
+
+monthly_activity = monthly_active.merge(
+    monthly_orders,
+    on="purchase_month_date",
+    how="left"
+)
+
+save_csv(
+    monthly_activity,
+    "03_monthly_customer_activity.csv"
+)
+
+
+# ============================================================
+# 20. NEW VS RETURNING CUSTOMERS
+# ============================================================
+
+monthly_customer_activity = monthly_customer_activity.merge(
+    customer_features[
+        [
+            customer_col,
+            "first_purchase_date"
+        ]
+    ],
+    on=customer_col,
+    how="left"
+)
+
+monthly_customer_activity["first_purchase_month"] = (
+    monthly_customer_activity["first_purchase_date"]
+    .dt.to_period("M")
+)
+
+monthly_customer_activity["customer_type"] = np.where(
+    monthly_customer_activity["purchase_month"]
+    == monthly_customer_activity["first_purchase_month"],
+    "New",
+    "Returning"
+)
+
+new_returning = (
+    monthly_customer_activity
+    .groupby(
+        [
+            "purchase_month_date",
+            "customer_type"
+        ]
+    )[customer_col]
+    .nunique()
+    .reset_index(name="customers")
+)
+
+save_csv(
+    new_returning,
+    "11_new_vs_returning_customers.csv"
+)
+
+
+# ============================================================
+# 21. COHORT SIZE
+# ============================================================
+
+cohort_sizes = (
+    customer_features
+    .groupby("cohort_month_date")[customer_col]
+    .nunique()
+    .reset_index(name="cohort_size")
+)
+
+save_csv(
+    cohort_sizes,
+    "05_cohort_sizes.csv"
+)
+
+
+# ============================================================
+# 22. CREATE RELATIVE MONTH
+# ============================================================
+
+monthly_customer_activity["activity_month"] = (
+    monthly_customer_activity["purchase_month"]
+)
+
+monthly_customer_activity = monthly_customer_activity.merge(
+    customer_features[
+        [
+            customer_col,
+            "cohort_month"
+        ]
+    ],
+    on=customer_col,
+    how="left"
+)
+
+monthly_customer_activity["cohort_index"] = (
+    (
+        monthly_customer_activity["activity_month"]
+        .dt.year
+        - monthly_customer_activity["cohort_month"]
+        .dt.year
+    ) * 12
+    +
+    (
+        monthly_customer_activity["activity_month"]
+        .dt.month
+        - monthly_customer_activity["cohort_month"]
+        .dt.month
+    )
+)
+
+
+# ============================================================
+# 23. COHORT RETENTION COUNTS
+# ============================================================
+
+cohort_retention_counts = (
+    monthly_customer_activity
+    .groupby(
+        [
+            "cohort_month",
+            "cohort_index"
+        ]
+    )[customer_col]
+    .nunique()
+    .reset_index(name="active_customers")
+)
+
+cohort_retention_counts = cohort_retention_counts[
+    cohort_retention_counts["cohort_index"] >= 0
+].copy()
+
+cohort_retention_counts = cohort_retention_counts.merge(
+    cohort_sizes.rename(
+        columns={
+            "cohort_month_date": "cohort_month"
+        }
+    ),
+    on="cohort_month",
+    how="left"
+)
+
+save_csv(
+    cohort_retention_counts,
+    "06_cohort_retention_counts.csv"
+)
+
+
+# ============================================================
+# 24. RETENTION RATES
+# ============================================================
+
+cohort_retention_counts["retention_rate_pct"] = (
+    cohort_retention_counts["active_customers"]
+    /
+    cohort_retention_counts["cohort_size"]
+    * 100
+)
+
+save_csv(
+    cohort_retention_counts,
+    "07_cohort_retention_rates.csv"
+)
+
+
+# ============================================================
+# 25. RETENTION MATRIX
+# ============================================================
+
+retention_matrix = (
+    cohort_retention_counts
+    .pivot(
+        index="cohort_month",
+        columns="cohort_index",
+        values="retention_rate_pct"
+    )
+    .sort_index()
+)
+
+retention_matrix.columns.name = "months_since_acquisition"
+
+retention_matrix.to_csv(
+    TABLE_DIR / "08_cohort_retention_matrix.csv"
+)
+
+
+# ============================================================
+# 26. RETENTION COUNTS MATRIX
+# ============================================================
+
+retention_count_matrix = (
+    cohort_retention_counts
+    .pivot(
+        index="cohort_month",
+        columns="cohort_index",
+        values="active_customers"
+    )
+    .sort_index()
+)
+
+retention_count_matrix.to_csv(
+    TABLE_DIR / "09_cohort_retention_count_matrix.csv"
+)
+
+
+# ============================================================
+# 27. MONTHLY RETENTION CURVE
+# ============================================================
+
+curve_data = (
+    cohort_retention_counts
+    .groupby("cohort_index")
+    .agg(
+        average_retention_pct=(
+            "retention_rate_pct",
+            "mean"
+        ),
+        median_retention_pct=(
+            "retention_rate_pct",
+            "median"
+        ),
+        cohorts_available=(
+            "cohort_month",
+            "nunique"
+        )
+    )
+    .reset_index()
+)
+
+save_csv(
+    curve_data,
+    "10_retention_curve_summary.csv"
+)
+
+
+# ============================================================
+# 28. RETAINED VS NON-RETAINED
+# ============================================================
+
+retained_summary = (
+    customer_features
+    .groupby("retained_customer")
+    .agg(
+        customers=(customer_col, "nunique"),
+        average_orders=("total_orders", "mean"),
+        median_orders=("total_orders", "median"),
+        average_spend=("total_spend", "mean"),
+        median_spend=("total_spend", "median"),
+        average_active_months=("active_months", "mean"),
+        average_lifetime_days=(
+            "customer_lifetime_days",
+            "mean"
+        ),
+    )
+    .reset_index()
+)
+
+retained_summary["customer_status"] = (
+    retained_summary["retained_customer"]
+    .map(
+        {
+            0: "Non-Retained",
+            1: "Retained"
+        }
+    )
+)
+
+save_csv(
+    retained_summary,
+    "12_retained_vs_nonretained_summary.csv"
+)
+
+
+# ============================================================
+# 29. RETAINED VS NON-RETAINED STATISTICAL TESTS
+# ============================================================
+
+statistical_results = []
+
+numeric_features = [
+    "total_orders",
+    "total_spend",
+    "average_order_value",
+    "total_freight",
+    "active_months",
+    "customer_lifetime_days",
+]
+
+for feature in numeric_features:
+
+    if feature not in customer_features.columns:
+        continue
+
+    retained_values = customer_features.loc[
+        customer_features["retained_customer"] == 1,
+        feature
+    ].dropna()
+
+    non_retained_values = customer_features.loc[
+        customer_features["retained_customer"] == 0,
+        feature
+    ].dropna()
+
+    if len(retained_values) < 2 or len(non_retained_values) < 2:
+        continue
+
+    # Welch's t-test
+    t_stat, t_p = ttest_ind(
+        retained_values,
+        non_retained_values,
+        equal_var=False
+    )
+
+    # Mann-Whitney U
+    try:
+        u_stat, mw_p = mannwhitneyu(
+            retained_values,
+            non_retained_values,
+            alternative="two-sided"
+        )
+    except Exception:
+        u_stat, mw_p = np.nan, np.nan
+
+    statistical_results.append(
+        {
+            "feature": feature,
+            "retained_n": len(retained_values),
+            "non_retained_n": len(non_retained_values),
+            "retained_mean": retained_values.mean(),
+            "non_retained_mean": non_retained_values.mean(),
+            "retained_median": retained_values.median(),
+            "non_retained_median": non_retained_values.median(),
+            "welch_t_stat": t_stat,
+            "welch_t_pvalue": t_p,
+            "mann_whitney_u": u_stat,
+            "mann_whitney_pvalue": mw_p,
+        }
+    )
+
+statistical_tests = pd.DataFrame(statistical_results)
+
+if not statistical_tests.empty:
+
+    # Benjamini-Hochberg FDR
+    pvals = statistical_tests[
+        "mann_whitney_pvalue"
+    ].fillna(1).values
+
+    order = np.argsort(pvals)
+    ranked = pvals[order]
+
+    n = len(ranked)
 
     adjusted = np.empty(n)
 
@@ -262,2723 +957,1091 @@ def apply_fdr(df, p_column="p_value"):
 
         rank = i + 1
 
-        value = (
-            sorted_p[i] * n / rank
-        )
+        value = ranked[i] * n / rank
 
         previous = min(previous, value)
 
         adjusted[i] = previous
 
-    fdr = np.empty(n)
+    fdr_values = np.empty(n)
+    fdr_values[order] = adjusted
 
-    fdr[order] = adjusted
+    statistical_tests[
+        "mann_whitney_fdr_pvalue"
+    ] = fdr_values
 
-    result["fdr_p_value"] = fdr
-
-    result["significant_fdr"] = (
-        result["fdr_p_value"] < 0.05
+    statistical_tests[
+        "significant_after_fdr"
+    ] = (
+        statistical_tests[
+            "mann_whitney_fdr_pvalue"
+        ] < 0.05
     )
 
-    return result
-
-
-def classify_skew(value):
-    value = abs(value)
-
-    if value <= 0.5:
-        return "Approximately symmetric"
-    elif value <= 1:
-        return "Moderately skewed"
-    else:
-        return "Highly skewed"
-
-
-def classify_kurtosis(value):
-    value = abs(value)
-
-    if value <= 1:
-        return "Typical"
-    elif value <= 3:
-        return "Moderately heavy/light-tailed"
-    else:
-        return "Strongly heavy/light-tailed"
-
-
-def normality_interpretation(skew_value, kurtosis_value):
-    if (
-        abs(skew_value) <= 1
-        and abs(kurtosis_value) <= 3
-    ):
-        return "Approximately normal"
-
-    return "Not approximately normal"
-
-
-def find_dataset():
-    """Automatically locate CSV dataset."""
-
-    possible_names = [
-        "olist_6_files_merged.csv",
-        "olist_6_files_merged(1).csv",
-        "olist.csv"
-    ]
-
-    search_locations = [
-        PROJECT_ROOT,
-        DATA_DIR
-    ]
-
-    for location in search_locations:
-
-        for name in possible_names:
-
-            path = location / name
-
-            if path.exists():
-                return path
-
-    csv_files = list(
-        PROJECT_ROOT.glob("*.csv")
-    ) + list(
-        DATA_DIR.glob("*.csv")
-    )
-
-    if csv_files:
-        return csv_files[0]
-
-    raise FileNotFoundError(
-        "No CSV dataset found. "
-        "Put your OLIST CSV inside the project folder "
-        "or inside the data folder."
-    )
-
-
-# ============================================================
-# 4. LOAD DATA
-# ============================================================
-
-print("\n" + "=" * 80)
-print("OLIST DATASET - COMPLETE EDA + STATISTICAL TESTING")
-print("=" * 80)
-
-dataset_path = find_dataset()
-
-print(f"\nDataset: {dataset_path}")
-
-df = pd.read_csv(
-    dataset_path,
-    low_memory=False
-)
-
-print(f"Loaded shape: {df.shape}")
-
-
-# ============================================================
-# 5. BASIC CLEANING
-# ============================================================
-
-df.columns = (
-    df.columns
-    .str.strip()
-    .str.replace(" ", "_")
-)
-
-# Replace infinite values
-df = df.replace(
-    [np.inf, -np.inf],
-    np.nan
+save_csv(
+    statistical_tests,
+    "13_statistical_tests.csv"
 )
 
 
 # ============================================================
-# 6. DATETIME DETECTION
+# 30. COHORT COMPARISON
 # ============================================================
 
-datetime_cols = []
-
-for col in df.select_dtypes(
-    include="object"
-).columns:
-
-    sample = df[col].dropna().astype(str)
-
-    if len(sample) == 0:
-        continue
-
-    sample = sample.head(1000)
-
-    parsed = pd.to_datetime(
-        sample,
-        errors="coerce"
+cohort_comparison = (
+    customer_features
+    .groupby("cohort_month_date")
+    .agg(
+        customers=(customer_col, "nunique"),
+        average_orders=("total_orders", "mean"),
+        median_orders=("total_orders", "median"),
+        average_spend=("total_spend", "mean"),
+        median_spend=("total_spend", "median"),
+        retained_rate_pct=("retained_customer", "mean"),
     )
+    .reset_index()
+)
 
-    success_rate = parsed.notna().mean()
+cohort_comparison["retained_rate_pct"] *= 100
 
-    if success_rate >= 0.80:
-
-        df[col] = pd.to_datetime(
-            df[col],
-            errors="coerce"
-        )
-
-        datetime_cols.append(col)
-
-
-# ============================================================
-# 7. IDENTIFY DATA TYPES
-# ============================================================
-
-numeric_cols = df.select_dtypes(
-    include=np.number
-).columns.tolist()
-
-categorical_cols = df.select_dtypes(
-    include=["object", "category", "bool"]
-).columns.tolist()
-
-datetime_cols = df.select_dtypes(
-    include=["datetime"]
-).columns.tolist()
-
-
-# ============================================================
-# 8. DATASET OVERVIEW
-# ============================================================
-
-print("\n" + "=" * 80)
-print("1. DATASET OVERVIEW")
-print("=" * 80)
-
-overview = pd.DataFrame({
-    "Metric": [
-        "Rows",
-        "Columns",
-        "Numeric Columns",
-        "Categorical Columns",
-        "Datetime Columns",
-        "Duplicate Rows",
-        "Total Missing Cells"
-    ],
-    "Value": [
-        len(df),
-        df.shape[1],
-        len(numeric_cols),
-        len(categorical_cols),
-        len(datetime_cols),
-        df.duplicated().sum(),
-        int(df.isna().sum().sum())
-    ]
-})
-
-print(overview.to_string(index=False))
-
-overview.to_csv(
-    TABLE_DIR / "01_dataset_overview.csv",
-    index=False
+save_csv(
+    cohort_comparison,
+    "14_cohort_comparison.csv"
 )
 
 
 # ============================================================
-# 9. MISSING VALUES
+# 31. OVERALL RETENTION SUMMARY
 # ============================================================
 
-print("\n" + "=" * 80)
-print("2. MISSING VALUES")
-print("=" * 80)
+total_customers = customer_features[customer_col].nunique()
 
-missing = pd.DataFrame({
-    "column": df.columns,
-    "missing_count": df.isna().sum().values
-})
+retained_customers = int(
+    customer_features["retained_customer"].sum()
+)
 
-missing["missing_percent"] = (
-    missing["missing_count"]
-    / len(df)
+non_retained_customers = (
+    total_customers - retained_customers
+)
+
+retained_pct = (
+    retained_customers
+    / total_customers
     * 100
 )
 
-missing = missing.sort_values(
-    "missing_percent",
-    ascending=False
+non_retained_pct = (
+    non_retained_customers
+    / total_customers
+    * 100
 )
 
-print(
-    missing.head(20).to_string(index=False)
-)
-
-missing.to_csv(
-    TABLE_DIR / "02_missing_values.csv",
-    index=False
-)
-
-
-# ============================================================
-# 10. DUPLICATES
-# ============================================================
-
-duplicate_count = df.duplicated().sum()
-
-duplicate_result = pd.DataFrame({
-    "duplicate_rows": [duplicate_count],
-    "duplicate_percent": [
-        duplicate_count / len(df) * 100
+overall_summary = pd.DataFrame(
+    [
+        {
+            "metric": "total_customers",
+            "value": total_customers
+        },
+        {
+            "metric": "retained_customers",
+            "value": retained_customers
+        },
+        {
+            "metric": "non_retained_customers",
+            "value": non_retained_customers
+        },
+        {
+            "metric": "retained_percentage",
+            "value": retained_pct
+        },
+        {
+            "metric": "non_retained_percentage",
+            "value": non_retained_pct
+        },
+        {
+            "metric": "total_orders",
+            "value": order_df[order_col].nunique()
+        },
+        {
+            "metric": "cohorts",
+            "value": cohort_sizes.shape[0]
+        },
     ]
-})
+)
 
-duplicate_result.to_csv(
-    TABLE_DIR / "03_duplicates.csv",
-    index=False
+save_csv(
+    overall_summary,
+    "15_overall_retention_summary.csv"
 )
 
 
 # ============================================================
-# 11. CONSTANT + NEAR-ZERO VARIANCE
+# 32. PLOT 01 — MONTHLY ACTIVE CUSTOMERS
 # ============================================================
 
-constant_cols = [
-    col for col in df.columns
-    if df[col].nunique(dropna=True) <= 1
-]
+plt.figure(figsize=(12, 6))
 
-near_zero_cols = []
-
-for col in df.columns:
-
-    counts = df[col].value_counts(
-        dropna=False,
-        normalize=True
-    )
-
-    if len(counts) > 0 and counts.iloc[0] >= 0.99:
-        near_zero_cols.append(col)
-
-variance_quality = pd.DataFrame({
-    "column": df.columns,
-    "is_constant": [
-        col in constant_cols
-        for col in df.columns
-    ],
-    "near_zero_variance": [
-        col in near_zero_cols
-        for col in df.columns
-    ]
-})
-
-variance_quality.to_csv(
-    TABLE_DIR / "04_variance_quality.csv",
-    index=False
+plt.plot(
+    monthly_activity["purchase_month_date"],
+    monthly_activity["active_customers"],
+    marker="o"
 )
 
-print("\nConstant columns:")
-print(constant_cols)
-
-
-# ============================================================
-# 12. ID-LIKE COLUMN DETECTION
-# ============================================================
-
-id_like_cols = []
-
-for col in df.columns:
-
-    name = col.lower()
-
-    unique_ratio = (
-        df[col].nunique(dropna=True)
-        / max(df[col].notna().sum(), 1)
-    )
-
-    if (
-        unique_ratio >= 0.95
-        or name.endswith("_id")
-        or name.endswith("_key")
-        or name == "id"
-        or "uuid" in name
-    ):
-        id_like_cols.append(col)
-
-id_like_cols = list(dict.fromkeys(id_like_cols))
-
-pd.DataFrame({
-    "id_like_column": id_like_cols
-}).to_csv(
-    TABLE_DIR / "05_id_like_columns.csv",
-    index=False
+plt.title(
+    "Monthly Active Customers",
+    fontsize=16,
+    fontweight="bold"
 )
 
-print("\nID-like columns:")
-print(id_like_cols)
+plt.xlabel("Purchase Month")
+plt.ylabel("Active Customers")
 
-
-# ============================================================
-# 13. ANALYSIS NUMERIC COLUMNS
-# ============================================================
-
-analysis_numeric_cols = [
-    col for col in numeric_cols
-    if col not in constant_cols
-    and col not in id_like_cols
-]
-
-
-# ============================================================
-# 14. DESCRIPTIVE STATISTICS
-# ============================================================
-
-print("\n" + "=" * 80)
-print("3. DESCRIPTIVE STATISTICS")
-print("=" * 80)
-
-if analysis_numeric_cols:
-
-    descriptive = df[
-        analysis_numeric_cols
-    ].describe().T
-
-    descriptive["variance"] = (
-        df[analysis_numeric_cols]
-        .var()
-    )
-
-    descriptive["IQR"] = (
-        df[analysis_numeric_cols]
-        .quantile(0.75)
-        -
-        df[analysis_numeric_cols]
-        .quantile(0.25)
-    )
-
-    descriptive["missing_count"] = (
-        df[analysis_numeric_cols]
-        .isna()
-        .sum()
-    )
-
-    descriptive["missing_percent"] = (
-        descriptive["missing_count"]
-        / len(df)
-        * 100
-    )
-
-    descriptive.to_csv(
-        TABLE_DIR / "06_descriptive_statistics.csv"
-    )
-
-    print(
-        descriptive.head(20).to_string()
-    )
-
-
-# ============================================================
-# 15. VARIANCE ANALYSIS
-# ============================================================
-
-variance_table = pd.DataFrame({
-    "column": analysis_numeric_cols,
-    "mean": [
-        df[col].mean()
-        for col in analysis_numeric_cols
-    ],
-    "variance": [
-        df[col].var()
-        for col in analysis_numeric_cols
-    ],
-    "standard_deviation": [
-        df[col].std()
-        for col in analysis_numeric_cols
-    ],
-    "IQR": [
-        df[col].quantile(0.75)
-        - df[col].quantile(0.25)
-        for col in analysis_numeric_cols
-    ]
-})
-
-variance_table = variance_table.sort_values(
-    "variance",
-    ascending=False
-)
-
-variance_table.to_csv(
-    TABLE_DIR / "07_variance_analysis.csv",
-    index=False
-)
-
-
-# ============================================================
-# 16. OUTLIER ANALYSIS
-# ============================================================
-
-outlier_rows = []
-
-for col in analysis_numeric_cols:
-
-    series = df[col].dropna()
-
-    if len(series) < 5:
-        continue
-
-    q1 = series.quantile(0.25)
-    q3 = series.quantile(0.75)
-
-    iqr = q3 - q1
-
-    if iqr == 0:
-        iqr_outliers = 0
-    else:
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-
-        iqr_outliers = (
-            (series < lower)
-            | (series > upper)
-        ).sum()
-
-    mean = series.mean()
-    std = series.std()
-
-    if std == 0:
-        z_outliers = 0
-    else:
-        z_outliers = (
-            np.abs(
-                (series - mean) / std
-            ) > Z_THRESHOLD
-        ).sum()
-
-    outlier_rows.append({
-        "column": col,
-        "IQR_outliers": int(iqr_outliers),
-        "IQR_outlier_percent":
-            iqr_outliers / len(series) * 100,
-        "Z_score_outliers": int(z_outliers),
-        "Z_outlier_percent":
-            z_outliers / len(series) * 100
-    })
-
-outliers = pd.DataFrame(outlier_rows)
-
-outliers = outliers.sort_values(
-    "IQR_outlier_percent",
-    ascending=False
-)
-
-outliers.to_csv(
-    TABLE_DIR / "08_outlier_analysis.csv",
-    index=False
-)
-
-
-# ============================================================
-# 17. SKEWNESS
-# ============================================================
-
-skew_rows = []
-
-for col in analysis_numeric_cols:
-
-    series = df[col].dropna()
-
-    if len(series) < 3:
-        continue
-
-    value = series.skew()
-
-    skew_rows.append({
-        "column": col,
-        "skewness": value,
-        "classification": classify_skew(value),
-        "high_skew": abs(value) > SKEW_HIGH
-    })
-
-skewness = pd.DataFrame(skew_rows)
-
-skewness = skewness.sort_values(
-    "skewness",
-    key=lambda x: x.abs(),
-    ascending=False
-)
-
-skewness.to_csv(
-    TABLE_DIR / "09_skewness_analysis.csv",
-    index=False
-)
-
-high_skew_cols = skewness.loc[
-    skewness["high_skew"],
-    "column"
-].tolist()
-
-print("\nHighly skewed variables:")
-print(high_skew_cols)
-
-
-# ============================================================
-# 18. YEO-JOHNSON TRANSFORMATION
-# ============================================================
-
-transformation_rows = []
-
-transformed_data = {}
-
-for col in high_skew_cols:
-
-    series = df[col].copy()
-
-    valid = series.dropna()
-
-    if len(valid) < 20:
-        continue
-
-    try:
-
-        transformer = PowerTransformer(
-            method="yeo-johnson",
-            standardize=False
-        )
-
-        transformed_values = transformer.fit_transform(
-            valid.values.reshape(-1, 1)
-        ).flatten()
-
-        before_skew = valid.skew()
-        after_skew = pd.Series(
-            transformed_values
-        ).skew()
-
-        transformed_data[col] = pd.Series(
-            transformed_values,
-            index=valid.index
-        )
-
-        transformation_rows.append({
-            "column": col,
-            "before_skewness": before_skew,
-            "after_skewness": after_skew,
-            "absolute_improvement":
-                abs(before_skew)
-                - abs(after_skew),
-            "improved":
-                abs(after_skew)
-                < abs(before_skew)
-        })
-
-    except Exception as e:
-
-        transformation_rows.append({
-            "column": col,
-            "before_skewness":
-                valid.skew(),
-            "after_skewness": np.nan,
-            "absolute_improvement": np.nan,
-            "improved": False
-        })
-
-transformation_results = pd.DataFrame(
-    transformation_rows
-)
-
-transformation_results.to_csv(
-    TABLE_DIR / "10_yeo_johnson_validation.csv",
-    index=False
-)
-
-
-# ============================================================
-# 19. KURTOSIS
-# ============================================================
-
-kurtosis_rows = []
-
-for col in analysis_numeric_cols:
-
-    series = df[col].dropna()
-
-    if len(series) < 4:
-        continue
-
-    value = series.kurt()
-
-    kurtosis_rows.append({
-        "column": col,
-        "excess_kurtosis": value,
-        "classification":
-            classify_kurtosis(value),
-        "high_kurtosis":
-            abs(value) > KURTOSIS_HIGH
-    })
-
-kurtosis_table = pd.DataFrame(
-    kurtosis_rows
-)
-
-kurtosis_table = kurtosis_table.sort_values(
-    "excess_kurtosis",
-    key=lambda x: x.abs(),
-    ascending=False
-)
-
-kurtosis_table.to_csv(
-    TABLE_DIR / "11_kurtosis_analysis.csv",
-    index=False
-)
-
-
-# ============================================================
-# 20. NORMALITY TESTING
-# ============================================================
-
-print("\n" + "=" * 80)
-print("4. NORMALITY TESTING")
-print("=" * 80)
-
-normality_candidates = [
-    col for col in analysis_numeric_cols
-    if df[col].nunique(dropna=True) >= 20
-]
-
-# Select representative variables using skewness
-if normality_candidates:
-
-    normality_candidates = sorted(
-        normality_candidates,
-        key=lambda c: abs(
-            df[c].skew()
-        ),
-        reverse=True
-    )[:MAX_QQ_VARS]
-
-normality_rows = []
-
-for col in normality_candidates:
-
-    series = safe_sample(
-        df[col],
-        MAX_NORMALITY_SAMPLE
-    )
-
-    if len(series) < 20:
-        continue
-
-    try:
-
-        shapiro_stat, shapiro_p = shapiro(
-            series
-        )
-
-        normal_stat, normal_p = normaltest(
-            series
-        )
-
-        skew_value = series.skew()
-        kurt_value = series.kurt()
-
-        normality_rows.append({
-            "column": col,
-            "sample_size": len(series),
-            "shapiro_p_value": shapiro_p,
-            "dagostino_p_value": normal_p,
-            "skewness": skew_value,
-            "excess_kurtosis": kurt_value,
-            "interpretation":
-                normality_interpretation(
-                    skew_value,
-                    kurt_value
-                )
-        })
-
-    except Exception:
-        pass
-
-normality_results = pd.DataFrame(
-    normality_rows
-)
-
-normality_results.to_csv(
-    TABLE_DIR / "12_normality_tests.csv",
-    index=False
-)
-
-
-# ============================================================
-# 21. CORRELATION ANALYSIS
-# ============================================================
-
-print("\n" + "=" * 80)
-print("5. CORRELATION ANALYSIS")
-print("=" * 80)
-
-correlation_candidates = [
-    col for col in analysis_numeric_cols
-    if df[col].nunique(dropna=True) > 5
-]
-
-# Select variables with largest variance
-correlation_candidates = sorted(
-    correlation_candidates,
-    key=lambda c: df[c].var(),
-    reverse=True
-)[:MAX_CORRELATION_VARS]
-
-if len(correlation_candidates) >= 2:
-
-    pearson_matrix = df[
-        correlation_candidates
-    ].corr(
-        method="pearson"
-    )
-
-    spearman_matrix = df[
-        correlation_candidates
-    ].corr(
-        method="spearman"
-    )
-
-    pearson_matrix.to_csv(
-        TABLE_DIR / "13_pearson_correlation.csv"
-    )
-
-    spearman_matrix.to_csv(
-        TABLE_DIR / "14_spearman_correlation.csv"
-    )
-
-    pair_rows = []
-
-    for i in range(
-        len(correlation_candidates)
-    ):
-
-        for j in range(i + 1, len(
-            correlation_candidates
-        )):
-
-            x_col = correlation_candidates[i]
-            y_col = correlation_candidates[j]
-
-            temp = df[
-                [x_col, y_col]
-            ].dropna()
-
-            if len(temp) < 10:
-                continue
-
-            try:
-
-                p_r, p_p = pearsonr(
-                    temp[x_col],
-                    temp[y_col]
-                )
-
-                s_r, s_p = spearmanr(
-                    temp[x_col],
-                    temp[y_col]
-                )
-
-                pair_rows.append({
-                    "variable_1": x_col,
-                    "variable_2": y_col,
-                    "pearson_r": p_r,
-                    "pearson_p": p_p,
-                    "spearman_r": s_r,
-                    "spearman_p": s_p,
-                    "pearson_strength":
-                        interpretation_strength(p_r),
-                    "spearman_strength":
-                        interpretation_strength(s_r)
-                })
-
-            except Exception:
-                pass
-
-    correlation_pairs = pd.DataFrame(
-        pair_rows
-    )
-
-    if not correlation_pairs.empty:
-
-        correlation_pairs["abs_pearson"] = (
-            correlation_pairs["pearson_r"].abs()
-        )
-
-        correlation_pairs = correlation_pairs.sort_values(
-            "abs_pearson",
-            ascending=False
-        )
-
-        correlation_pairs.to_csv(
-            TABLE_DIR / "15_correlation_pairs.csv",
-            index=False
-        )
-
-
-# ============================================================
-# 22. GROUPING / DEPENDENCE ANALYSIS
-# ============================================================
-
-print("\n" + "=" * 80)
-print("6. GROUP MEAN / DEPENDENCE ANALYSIS")
-print("=" * 80)
-
-group_candidates = []
-
-for col in categorical_cols:
-
-    if col in id_like_cols:
-        continue
-
-    unique_count = df[col].nunique(
-        dropna=True
-    )
-
-    if 2 <= unique_count <= 15:
-        group_candidates.append(col)
-
-
-# Also consider low-cardinality numeric columns
-for col in analysis_numeric_cols:
-
-    unique_count = df[col].nunique(
-        dropna=True
-    )
-
-    if 2 <= unique_count <= 10:
-        group_candidates.append(col)
-
-
-group_candidates = list(
-    dict.fromkeys(group_candidates)
-)
-
-group_candidates = group_candidates[
-    :MAX_GROUP_VARS
-]
-
-# Choose a meaningful numeric target
-target_candidates = [
-    col for col in analysis_numeric_cols
-    if df[col].nunique(dropna=True) > 10
-]
-
-target_candidates = sorted(
-    target_candidates,
-    key=lambda c: df[c].var(),
-    reverse=True
-)
-
-group_target = (
-    target_candidates[0]
-    if target_candidates
-    else None
-)
-
-group_mean_rows = []
-
-if group_target is not None:
-
-    for group_col in group_candidates:
-
-        temp = df[
-            [group_col, group_target]
-        ].dropna()
-
-        if temp.empty:
-            continue
-
-        grouped = temp.groupby(
-            group_col,
-            observed=True
-        )[group_target].agg(
-            ["count", "mean", "median", "std"]
-        ).reset_index()
-
-        for _, row in grouped.iterrows():
-
-            group_mean_rows.append({
-                "group_variable":
-                    group_col,
-                "group":
-                    row[group_col],
-                "target":
-                    group_target,
-                "count":
-                    row["count"],
-                "mean":
-                    row["mean"],
-                "median":
-                    row["median"],
-                "std":
-                    row["std"]
-            })
-
-group_means = pd.DataFrame(
-    group_mean_rows
-)
-
-group_means.to_csv(
-    TABLE_DIR / "16_group_means.csv",
-    index=False
-)
-
-
-# ============================================================
-# 23. STATISTICAL TESTING
-# ============================================================
-
-print("\n" + "=" * 80)
-print("7. STATISTICAL TESTING")
-print("=" * 80)
-
-test_rows = []
-
-
-# ------------------------------------------------------------
-# 23A. CORRELATION TESTS
-# ------------------------------------------------------------
-
-if "correlation_pairs" in locals():
-
-    top_pairs = correlation_pairs.head(
-        MAX_TEST_PAIRS
-    )
-
-    for _, row in top_pairs.iterrows():
-
-        test_rows.append({
-            "test": "Pearson correlation",
-            "variable_1":
-                row["variable_1"],
-            "variable_2":
-                row["variable_2"],
-            "statistic":
-                row["pearson_r"],
-            "p_value":
-                row["pearson_p"],
-            "effect_size":
-                row["pearson_r"],
-            "effect_type":
-                "Correlation"
-        })
-
-        test_rows.append({
-            "test": "Spearman correlation",
-            "variable_1":
-                row["variable_1"],
-            "variable_2":
-                row["variable_2"],
-            "statistic":
-                row["spearman_r"],
-            "p_value":
-                row["spearman_p"],
-            "effect_size":
-                row["spearman_r"],
-            "effect_type":
-                "Correlation"
-        })
-
-
-# ------------------------------------------------------------
-# 23B. GROUP TESTS
-# ------------------------------------------------------------
-
-if group_target is not None:
-
-    for group_col in group_candidates:
-
-        temp = df[
-            [group_col, group_target]
-        ].dropna()
-
-        groups = []
-
-        labels = []
-
-        for label, subset in temp.groupby(
-            group_col,
-            observed=True
-        ):
-
-            values = subset[
-                group_target
-            ].values
-
-            if len(values) >= 10:
-
-                groups.append(values)
-                labels.append(label)
-
-        if len(groups) < 2:
-            continue
-
-
-        # ====================================================
-        # TWO GROUPS
-        # ====================================================
-
-        if len(groups) == 2:
-
-            g1, g2 = groups
-
-            normal_flags = []
-
-            for g in groups:
-
-                sample = (
-                    g
-                    if len(g) <= 5000
-                    else np.random.default_rng(
-                        RANDOM_STATE
-                    ).choice(
-                        g,
-                        5000,
-                        replace=False
-                    )
-                )
-
-                try:
-                    p = shapiro(sample).pvalue
-                    normal_flags.append(
-                        p >= 0.05
-                    )
-                except Exception:
-                    normal_flags.append(False)
-
-            try:
-
-                levene_stat, levene_p = levene(
-                    g1,
-                    g2,
-                    center="median"
-                )
-
-                test_rows.append({
-                    "test":
-                        "Levene variance equality",
-                    "variable_1":
-                        group_col,
-                    "variable_2":
-                        group_target,
-                    "statistic":
-                        levene_stat,
-                    "p_value":
-                        levene_p,
-                    "effect_size":
-                        np.nan,
-                    "effect_type":
-                        "Variance"
-                })
-
-            except Exception:
-                levene_p = 0
-
-            # Welch t-test when approximately normal
-            if all(normal_flags):
-
-                statistic, p_value = ttest_ind(
-                    g1,
-                    g2,
-                    equal_var=False
-                )
-
-                effect = cohens_d(
-                    g1,
-                    g2
-                )
-
-                test_name = (
-                    "Welch independent t-test"
-                )
-
-                effect_type = "Cohen's d"
-
-            else:
-
-                statistic, p_value = mannwhitneyu(
-                    g1,
-                    g2,
-                    alternative="two-sided"
-                )
-
-                effect = rank_biserial(
-                    g1,
-                    g2
-                )
-
-                test_name = (
-                    "Mann-Whitney U test"
-                )
-
-                effect_type = (
-                    "Rank-biserial correlation"
-                )
-
-            test_rows.append({
-                "test": test_name,
-                "variable_1":
-                    group_col,
-                "variable_2":
-                    group_target,
-                "statistic":
-                    statistic,
-                "p_value":
-                    p_value,
-                "effect_size":
-                    effect,
-                "effect_type":
-                    effect_type
-            })
-
-
-        # ====================================================
-        # MORE THAN TWO GROUPS
-        # ====================================================
-
-        else:
-
-            normal_flags = []
-
-            for g in groups:
-
-                sample = (
-                    g
-                    if len(g) <= 5000
-                    else np.random.default_rng(
-                        RANDOM_STATE
-                    ).choice(
-                        g,
-                        5000,
-                        replace=False
-                    )
-                )
-
-                try:
-                    p = shapiro(sample).pvalue
-                    normal_flags.append(
-                        p >= 0.05
-                    )
-                except Exception:
-                    normal_flags.append(False)
-
-            try:
-
-                levene_stat, levene_p = levene(
-                    *groups,
-                    center="median"
-                )
-
-                test_rows.append({
-                    "test":
-                        "Levene variance equality",
-                    "variable_1":
-                        group_col,
-                    "variable_2":
-                        group_target,
-                    "statistic":
-                        levene_stat,
-                    "p_value":
-                        levene_p,
-                    "effect_size":
-                        np.nan,
-                    "effect_type":
-                        "Variance"
-                })
-
-            except Exception:
-                levene_p = 0
-
-            if all(normal_flags):
-
-                statistic, p_value = f_oneway(
-                    *groups
-                )
-
-                effect = eta_squared(
-                    groups
-                )
-
-                test_name = "One-way ANOVA"
-                effect_type = "Eta squared"
-
-            else:
-
-                statistic, p_value = kruskal(
-                    *groups
-                )
-
-                effect = eta_squared(
-                    groups
-                )
-
-                test_name = "Kruskal-Wallis test"
-                effect_type = "Eta squared"
-
-            test_rows.append({
-                "test": test_name,
-                "variable_1":
-                    group_col,
-                "variable_2":
-                    group_target,
-                "statistic":
-                    statistic,
-                "p_value":
-                    p_value,
-                "effect_size":
-                    effect,
-                "effect_type":
-                    effect_type
-            })
-
-
-# ============================================================
-# 24. CHI-SQUARE + CRAMER'S V
-# ============================================================
-
-chi_candidates = [
-    col for col in categorical_cols
-    if col not in id_like_cols
-    and 2 <= df[col].nunique(dropna=True) <= 10
-]
-
-chi_candidates = chi_candidates[:8]
-
-for i in range(len(chi_candidates)):
-
-    for j in range(i + 1, len(chi_candidates)):
-
-        col1 = chi_candidates[i]
-        col2 = chi_candidates[j]
-
-        table = pd.crosstab(
-            df[col1],
-            df[col2]
-        )
-
-        if (
-            table.shape[0] < 2
-            or table.shape[1] < 2
-        ):
-            continue
-
-        try:
-
-            chi2, p_value, dof, expected = (
-                chi2_contingency(table)
-            )
-
-            effect = cramers_v(table)
-
-            test_rows.append({
-                "test":
-                    "Chi-square + Cramer's V",
-                "variable_1":
-                    col1,
-                "variable_2":
-                    col2,
-                "statistic":
-                    chi2,
-                "p_value":
-                    p_value,
-                "effect_size":
-                    effect,
-                "effect_type":
-                    "Cramer's V"
-            })
-
-        except Exception:
-            pass
-
-
-# ============================================================
-# 25. FINAL STATISTICAL RESULTS
-# ============================================================
-
-statistical_tests = pd.DataFrame(
-    test_rows
-)
-
-if not statistical_tests.empty:
-
-    statistical_tests = apply_fdr(
-        statistical_tests,
-        "p_value"
-    )
-
-    statistical_tests["significant_raw"] = (
-        statistical_tests["p_value"] < 0.05
-    )
-
-    statistical_tests["effect_magnitude"] = (
-        statistical_tests["effect_size"]
-        .abs()
-        .apply(interpretation_strength)
-    )
-
-    statistical_tests.to_csv(
-        TABLE_DIR / "17_statistical_tests.csv",
-        index=False
-    )
-
-    print(
-        statistical_tests.head(30)
-        .to_string(index=False)
-    )
-
-
-# ============================================================
-# 26. VIF MULTICOLLINEARITY
-# ============================================================
-
-print("\n" + "=" * 80)
-print("8. MULTICOLLINEARITY - VIF")
-print("=" * 80)
-
-vif_candidates = [
-    col for col in analysis_numeric_cols
-    if df[col].nunique(dropna=True) > 5
-]
-
-vif_candidates = sorted(
-    vif_candidates,
-    key=lambda c: df[c].var(),
-    reverse=True
-)[:MAX_VIF_VARS]
-
-if len(vif_candidates) >= 2:
-
-    vif_data = df[
-        vif_candidates
-    ].copy()
-
-    vif_data = vif_data.replace(
-        [np.inf, -np.inf],
-        np.nan
-    )
-
-    vif_data = vif_data.fillna(
-        vif_data.median()
-    )
-
-    # Remove zero variance columns
-    vif_data = vif_data.loc[
-        :,
-        vif_data.nunique() > 1
-    ]
-
-    vif_rows = []
-
-    for col in vif_data.columns:
-
-        y = vif_data[col].values
-
-        X = vif_data.drop(
-            columns=[col]
-        )
-
-        if X.shape[1] == 0:
-            vif_value = 1.0
-
-        else:
-
-            model = LinearRegression()
-
-            model.fit(X, y)
-
-            r2 = model.score(
-                X,
-                y
-            )
-
-            if r2 >= 0.999999:
-                vif_value = np.inf
-            else:
-                vif_value = 1 / (1 - r2)
-
-        if vif_value < 5:
-            interpretation = "Low"
-        elif vif_value < 10:
-            interpretation = "Moderate"
-        else:
-            interpretation = "High"
-
-        vif_rows.append({
-            "feature": col,
-            "VIF": vif_value,
-            "interpretation":
-                interpretation
-        })
-
-    vif_results = pd.DataFrame(
-        vif_rows
-    ).sort_values(
-        "VIF",
-        ascending=False
-    )
-
-    vif_results.to_csv(
-        TABLE_DIR / "18_vif_analysis.csv",
-        index=False
-    )
-
-    print(
-        vif_results.to_string(index=False)
-    )
-
-
-# ============================================================
-# 27. BEFORE / AFTER TRANSFORMATION VALIDATION
-# ============================================================
-
-validation_rows = []
-
-for col, transformed_series in transformed_data.items():
-
-    before = df[col].dropna()
-
-    after = transformed_series.dropna()
-
-    before_q1 = before.quantile(0.25)
-    before_q3 = before.quantile(0.75)
-    before_iqr = before_q3 - before_q1
-
-    after_q1 = after.quantile(0.25)
-    after_q3 = after.quantile(0.75)
-    after_iqr = after_q3 - after_q1
-
-    if before_iqr != 0:
-
-        before_outliers = (
-            (before < before_q1 - 1.5 * before_iqr)
-            |
-            (before > before_q3 + 1.5 * before_iqr)
-        ).sum()
-
-    else:
-        before_outliers = 0
-
-    if after_iqr != 0:
-
-        after_outliers = (
-            (after < after_q1 - 1.5 * after_iqr)
-            |
-            (after > after_q3 + 1.5 * after_iqr)
-        ).sum()
-
-    else:
-        after_outliers = 0
-
-    validation_rows.append({
-        "column": col,
-        "before_skewness":
-            before.skew(),
-        "after_skewness":
-            after.skew(),
-        "before_excess_kurtosis":
-            before.kurt(),
-        "after_excess_kurtosis":
-            after.kurt(),
-        "before_IQR_outliers":
-            before_outliers,
-        "after_IQR_outliers":
-            after_outliers
-    })
-
-transformation_validation = pd.DataFrame(
-    validation_rows
-)
-
-transformation_validation.to_csv(
-    TABLE_DIR / "19_before_after_validation.csv",
-    index=False
-)
-
-
-# ============================================================
-# 28. PLOT 1 - DATASET OVERVIEW
-# ============================================================
-
-fig, axes = plt.subplots(
-    2,
-    2,
-    figsize=(15, 10)
-)
-
-# Feature types
-type_counts = pd.Series({
-    "Numeric": len(numeric_cols),
-    "Categorical": len(categorical_cols),
-    "Datetime": len(datetime_cols)
-})
-
-type_counts.plot(
-    kind="bar",
-    ax=axes[0, 0]
-)
-
-axes[0, 0].set_title(
-    "Dataset Feature Types"
-)
-
-axes[0, 0].set_ylabel(
-    "Number of Columns"
-)
-
-axes[0, 0].tick_params(
-    axis="x",
-    rotation=0
-)
-
-
-# Missing values
-top_missing = (
-    missing
-    .head(10)
-    .sort_values("missing_percent")
-)
-
-axes[0, 1].barh(
-    top_missing["column"],
-    top_missing["missing_percent"]
-)
-
-axes[0, 1].set_title(
-    "Top 10 Columns by Missing Percentage"
-)
-
-axes[0, 1].set_xlabel(
-    "Missing Values (%)"
-)
-
-
-# Dataset size
-axes[1, 0].bar(
-    ["Rows", "Columns"],
-    [df.shape[0], df.shape[1]]
-)
-
-axes[1, 0].set_title(
-    "Dataset Dimensions"
-)
-
-axes[1, 0].set_ylabel(
-    "Count"
-)
-
-
-# Data quality
-quality_labels = [
-    "Missing Cells",
-    "Duplicates",
-    "Constant Columns",
-    "ID-like Columns"
-]
-
-quality_values = [
-    int(df.isna().sum().sum()),
-    int(df.duplicated().sum()),
-    len(constant_cols),
-    len(id_like_cols)
-]
-
-axes[1, 1].bar(
-    quality_labels,
-    quality_values
-)
-
-axes[1, 1].set_title(
-    "Data Quality Indicators"
-)
-
-axes[1, 1].tick_params(
-    axis="x",
-    rotation=25
-)
+plt.xticks(rotation=45)
 
 save_plot(
-    "01_dataset_overview.png"
+    "01_monthly_active_customers.png"
 )
 
 
 # ============================================================
-# 29. PLOT 2 - NUMERICAL DISTRIBUTIONS
+# 33. PLOT 02 — NEW VS RETURNING
 # ============================================================
 
-distribution_cols = (
-    variance_table
-    .head(MAX_DISTRIBUTION_VARS)["column"]
-    .tolist()
+new_returning_pivot = (
+    new_returning
+    .pivot(
+        index="purchase_month_date",
+        columns="customer_type",
+        values="customers"
+    )
+    .fillna(0)
 )
 
-if distribution_cols:
+plt.figure(figsize=(12, 6))
 
-    n_cols = 2
-    n_rows = int(
-        np.ceil(
-            len(distribution_cols)
-            / n_cols
-        )
-    )
+new_returning_pivot.plot(
+    kind="bar",
+    ax=plt.gca()
+)
 
-    fig, axes = plt.subplots(
-        n_rows,
-        n_cols,
-        figsize=(15, 4 * n_rows)
-    )
+plt.title(
+    "New vs Returning Customers",
+    fontsize=16,
+    fontweight="bold"
+)
 
-    axes = np.array(
-        axes
-    ).reshape(-1)
+plt.xlabel("Purchase Month")
+plt.ylabel("Customers")
 
-    for ax, col in zip(
-        axes,
-        distribution_cols
-    ):
+plt.xticks(rotation=45)
 
-        values = safe_sample(
-            df[col],
-            MAX_PLOT_SAMPLE
-        )
+save_plot(
+    "02_new_vs_returning_customers.png"
+)
+
+
+# ============================================================
+# 34. PLOT 03 — CUSTOMER ORDER DISTRIBUTION
+# ============================================================
+
+plt.figure(figsize=(10, 6))
+
+sns.histplot(
+    customer_features["total_orders"],
+    bins=30,
+    kde=True
+)
+
+plt.title(
+    "Customer Order Distribution",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Total Orders")
+plt.ylabel("Customers")
+
+save_plot(
+    "03_customer_order_distribution.png"
+)
+
+
+# ============================================================
+# 35. PLOT 04 — CUSTOMER SPEND DISTRIBUTION
+# ============================================================
+
+if customer_features["total_spend"].notna().any():
+
+    plot_values = customer_features[
+        "total_spend"
+    ].replace(
+        [np.inf, -np.inf],
+        np.nan
+    ).dropna()
+
+    if len(plot_values) > 0:
+
+        if len(plot_values) > 20000:
+
+            plot_values = plot_values.sample(
+                20000,
+                random_state=RANDOM_STATE
+            )
+
+        plt.figure(figsize=(10, 6))
 
         sns.histplot(
-            values,
-            kde=True,
-            ax=ax
+            plot_values,
+            bins=40,
+            kde=True
         )
 
-        ax.set_title(
-            f"Distribution: {col}"
+        plt.title(
+            "Customer Spend Distribution",
+            fontsize=16,
+            fontweight="bold"
         )
 
-        ax.set_xlabel(col)
-        ax.set_ylabel("Frequency")
+        plt.xlabel("Total Spend")
+        plt.ylabel("Customers")
 
-    for ax in axes[
-        len(distribution_cols):
-    ]:
-        ax.axis("off")
-
-    save_plot(
-        "02_numerical_distributions.png"
-    )
+        save_plot(
+            "04_customer_spend_distribution.png"
+        )
 
 
 # ============================================================
-# 30. PLOT 3 - BOX PLOTS / OUTLIERS
+# 36. PLOT 05 — COHORT SIZE
 # ============================================================
 
-box_cols = (
-    variance_table
-    .head(MAX_BOXPLOT_VARS)["column"]
-    .tolist()
+plt.figure(figsize=(12, 6))
+
+sns.barplot(
+    data=cohort_sizes,
+    x="cohort_month_date",
+    y="cohort_size"
 )
 
-if box_cols:
+plt.title(
+    "Customer Acquisition Cohort Size",
+    fontsize=16,
+    fontweight="bold"
+)
 
-    box_data = df[
-        box_cols
-    ].copy()
+plt.xlabel("Acquisition Cohort")
+plt.ylabel("Customers")
 
-    box_data = box_data.apply(
-        lambda x: (
-            (x - x.median())
-            / x.std()
-            if x.std() != 0
-            else x
-        )
-    )
+plt.xticks(rotation=45)
 
-    plt.figure(
-        figsize=(15, 7)
-    )
-
-    sns.boxplot(
-        data=box_data
-    )
-
-    plt.title(
-        "Standardized Boxplots - Outlier Comparison"
-    )
-
-    plt.xlabel(
-        "Numerical Variables"
-    )
-
-    plt.ylabel(
-        "Standardized Value"
-    )
-
-    plt.xticks(
-        rotation=45,
-        ha="right"
-    )
-
-    save_plot(
-        "03_outlier_boxplots.png"
-    )
+save_plot(
+    "05_cohort_size.png"
+)
 
 
 # ============================================================
-# 31. PLOT 4 - CATEGORICAL DISTRIBUTIONS
+# 37. PLOT 06 — RETENTION HEATMAP
 # ============================================================
 
-categorical_plot_cols = [
-    col for col in categorical_cols
-    if col not in id_like_cols
-    and 2 <= df[col].nunique(dropna=True) <= 15
-][:MAX_CATEGORICAL_VARS]
+plt.figure(figsize=(14, 9))
 
-if categorical_plot_cols:
+sns.heatmap(
+    retention_matrix,
+    annot=True,
+    fmt=".1f",
+    cmap="Blues",
+    linewidths=0.5,
+    cbar_kws={
+        "label": "Retention %"
+    }
+)
 
-    n_cols = 2
+plt.title(
+    "Customer Cohort Retention Heatmap",
+    fontsize=17,
+    fontweight="bold"
+)
 
-    n_rows = int(
-        np.ceil(
-            len(categorical_plot_cols)
-            / n_cols
-        )
-    )
+plt.xlabel("Months Since Acquisition")
+plt.ylabel("Acquisition Cohort")
 
-    fig, axes = plt.subplots(
-        n_rows,
-        n_cols,
-        figsize=(15, 5 * n_rows)
-    )
-
-    axes = np.array(
-        axes
-    ).reshape(-1)
-
-    for ax, col in zip(
-        axes,
-        categorical_plot_cols
-    ):
-
-        counts = (
-            df[col]
-            .value_counts()
-            .head(10)
-            .sort_values()
-        )
-
-        ax.barh(
-            counts.index.astype(str),
-            counts.values
-        )
-
-        ax.set_title(
-            f"Category Frequency: {col}"
-        )
-
-        ax.set_xlabel("Count")
-        ax.set_ylabel(col)
-
-    for ax in axes[
-        len(categorical_plot_cols):
-    ]:
-        ax.axis("off")
-
-    save_plot(
-        "04_categorical_distributions.png"
-    )
+save_plot(
+    "06_cohort_retention_heatmap.png"
+)
 
 
 # ============================================================
-# 32. PLOT 5 - PEARSON CORRELATION
+# 38. PLOT 07 — RETENTION CURVES
 # ============================================================
 
-if len(correlation_candidates) >= 2:
+plt.figure(figsize=(12, 7))
 
-    plt.figure(
-        figsize=(13, 10)
-    )
-
-    sns.heatmap(
-        pearson_matrix,
-        annot=True,
-        fmt=".2f",
-        cmap="coolwarm",
-        center=0,
-        square=True,
-        linewidths=0.5
-    )
-
-    plt.title(
-        "Pearson Correlation Matrix"
-    )
-
-    save_plot(
-        "05_pearson_correlation.png"
-    )
-
-
-# ============================================================
-# 33. PLOT 6 - SPEARMAN CORRELATION
-# ============================================================
-
-if len(correlation_candidates) >= 2:
-
-    plt.figure(
-        figsize=(13, 10)
-    )
-
-    sns.heatmap(
-        spearman_matrix,
-        annot=True,
-        fmt=".2f",
-        cmap="coolwarm",
-        center=0,
-        square=True,
-        linewidths=0.5
-    )
-
-    plt.title(
-        "Spearman Rank Correlation Matrix"
-    )
-
-    save_plot(
-        "06_spearman_correlation.png"
-    )
-
-
-# ============================================================
-# 34. PLOT 7 - STRONGEST CORRELATION PAIRS
-# ============================================================
-
-if (
-    "correlation_pairs" in locals()
-    and not correlation_pairs.empty
+for cohort, group in cohort_retention_counts.groupby(
+    "cohort_month"
 ):
 
-    top_scatter_pairs = (
-        correlation_pairs
-        .head(4)
-    )
+    if len(group) >= 2:
 
-    fig, axes = plt.subplots(
-        2,
-        2,
-        figsize=(15, 12)
-    )
-
-    axes = axes.flatten()
-
-    for ax, (_, row) in zip(
-        axes,
-        top_scatter_pairs.iterrows()
-    ):
-
-        x = row["variable_1"]
-        y = row["variable_2"]
-
-        temp = df[
-            [x, y]
-        ].dropna()
-
-        if len(temp) > MAX_PLOT_SAMPLE:
-
-            temp = temp.sample(
-                MAX_PLOT_SAMPLE,
-                random_state=RANDOM_STATE
-            )
-
-        sns.scatterplot(
-            data=temp,
-            x=x,
-            y=y,
-            alpha=0.4,
-            s=25,
-            ax=ax
+        plt.plot(
+            group["cohort_index"],
+            group["retention_rate_pct"],
+            marker="o",
+            alpha=0.6,
+            linewidth=1.5,
+            label=str(cohort)
         )
 
-        ax.set_title(
-            f"{x} vs {y}\n"
-            f"Pearson r = {row['pearson_r']:.2f}"
-        )
+plt.title(
+    "Retention Curves by Acquisition Cohort",
+    fontsize=16,
+    fontweight="bold"
+)
 
-    for ax in axes[
-        len(top_scatter_pairs):
-    ]:
-        ax.axis("off")
+plt.xlabel("Months Since Acquisition")
+plt.ylabel("Retention Rate (%)")
 
-    save_plot(
-        "07_top_correlation_scatterplots.png"
+# Avoid unreadable legend if there are many cohorts
+if cohort_retention_counts["cohort_month"].nunique() <= 15:
+    plt.legend(
+        title="Cohort",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left"
     )
+
+save_plot(
+    "07_retention_curves.png"
+)
 
 
 # ============================================================
-# 35. PLOT 8 - SKEWNESS
+# 39. PLOT 08 — RETAINED VS NON-RETAINED
 # ============================================================
 
-if not skewness.empty:
-
-    skew_plot = skewness.head(10)
-
-    plt.figure(
-        figsize=(13, 7)
-    )
-
-    sns.barplot(
-        data=skew_plot,
-        x="skewness",
-        y="column",
-        hue="classification",
-        dodge=False
-    )
-
-    plt.axvline(
-        0,
-        linestyle="--"
-    )
-
-    plt.axvline(
-        1,
-        linestyle=":"
-    )
-
-    plt.axvline(
-        -1,
-        linestyle=":"
-    )
-
-    plt.title(
-        "Top 10 Variables by Absolute Skewness"
-    )
-
-    plt.xlabel(
-        "Skewness"
-    )
-
-    plt.ylabel(
-        "Variable"
-    )
-
-    save_plot(
-        "08_skewness_analysis.png"
-    )
-
-
-# ============================================================
-# 36. PLOT 9 - KURTOSIS
-# ============================================================
-
-if not kurtosis_table.empty:
-
-    kurt_plot = kurtosis_table.head(10)
-
-    plt.figure(
-        figsize=(13, 7)
-    )
-
-    sns.barplot(
-        data=kurt_plot,
-        x="excess_kurtosis",
-        y="column",
-        hue="classification",
-        dodge=False
-    )
-
-    plt.axvline(
-        0,
-        linestyle="--"
-    )
-
-    plt.axvline(
-        3,
-        linestyle=":"
-    )
-
-    plt.axvline(
-        -3,
-        linestyle=":"
-    )
-
-    plt.title(
-        "Top 10 Variables by Absolute Excess Kurtosis"
-    )
-
-    plt.xlabel(
-        "Excess Kurtosis"
-    )
-
-    plt.ylabel(
-        "Variable"
-    )
-
-    save_plot(
-        "09_excess_kurtosis_analysis.png"
-    )
-
-
-# ============================================================
-# 37. PLOT 10 - Q-Q NORMALITY
-# ============================================================
-
-if normality_candidates:
-
-    n_cols = 2
-
-    n_rows = int(
-        np.ceil(
-            len(normality_candidates)
-            / n_cols
-        )
-    )
-
-    fig, axes = plt.subplots(
-        n_rows,
-        n_cols,
-        figsize=(15, 5 * n_rows)
-    )
-
-    axes = np.array(
-        axes
-    ).reshape(-1)
-
-    for ax, col in zip(
-        axes,
-        normality_candidates
-    ):
-
-        values = safe_sample(
-            df[col],
-            MAX_NORMALITY_SAMPLE
-        )
-
-        stats.probplot(
-            values,
-            dist="norm",
-            plot=ax
-        )
-
-        ax.set_title(
-            f"Q-Q Plot: {col}"
-        )
-
-    for ax in axes[
-        len(normality_candidates):
-    ]:
-        ax.axis("off")
-
-    save_plot(
-        "10_qq_normality_plots.png"
-    )
-
-
-# ============================================================
-# 38. PLOT 11 - GROUP MEANS + CONFIDENCE INTERVAL
-# ============================================================
-
-if (
-    group_target is not None
-    and group_candidates
-):
-
-    group_plot_col = group_candidates[0]
-
-    temp = df[
-        [group_plot_col, group_target]
-    ].dropna()
-
-    if not temp.empty:
-
-        summary = (
-            temp.groupby(
-                group_plot_col,
-                observed=True
-            )[group_target]
-            .agg(["mean", "std", "count"])
-            .reset_index()
-        )
-
-        summary["sem"] = (
-            summary["std"]
-            / np.sqrt(summary["count"])
-        )
-
-        summary["ci95"] = (
-            1.96 * summary["sem"]
-        )
-
-        plt.figure(
-            figsize=(13, 7)
-        )
-
-        plt.bar(
-            summary[
-                group_plot_col
-            ].astype(str),
-            summary["mean"],
-            yerr=summary["ci95"],
-            capsize=5
-        )
-
-        plt.title(
-            f"Mean {group_target} by {group_plot_col}"
-        )
-
-        plt.xlabel(
-            group_plot_col
-        )
-
-        plt.ylabel(
-            f"Mean {group_target}"
-        )
-
-        plt.xticks(
-            rotation=30,
-            ha="right"
-        )
-
-        save_plot(
-            "11_group_means_confidence_interval.png"
-        )
-
-
-# ============================================================
-# 39. PLOT 12 - GROUP DISTRIBUTION
-# ============================================================
-
-if (
-    group_target is not None
-    and group_candidates
-):
-
-    group_plot_col = group_candidates[0]
-
-    temp = df[
-        [group_plot_col, group_target]
-    ].dropna()
-
-    if not temp.empty:
-
-        if len(temp) > MAX_PLOT_SAMPLE:
-
-            temp = temp.sample(
-                MAX_PLOT_SAMPLE,
-                random_state=RANDOM_STATE
-            )
-
-        plt.figure(
-            figsize=(13, 7)
-        )
-
-        sns.boxplot(
-            data=temp,
-            x=group_plot_col,
-            y=group_target
-        )
-
-        plt.title(
-            f"{group_target} Distribution Across {group_plot_col}"
-        )
-
-        plt.xlabel(
-            group_plot_col
-        )
-
-        plt.ylabel(
-            group_target
-        )
-
-        plt.xticks(
-            rotation=30,
-            ha="right"
-        )
-
-        save_plot(
-            "12_group_distribution_boxplot.png"
-        )
-
-
-# ============================================================
-# 40. PLOT 13 - STATISTICAL EFFECT SIZES
-# ============================================================
-
-if (
-    "statistical_tests" in locals()
-    and not statistical_tests.empty
-):
-
-    effect_plot = (
-        statistical_tests[
-            statistical_tests["effect_size"]
-            .notna()
+comparison_features = [
+    "total_orders",
+    "total_spend",
+    "active_months",
+    "customer_lifetime_days",
+]
+
+available_features = [
+    x
+    for x in comparison_features
+    if x in customer_features.columns
+]
+
+if available_features:
+
+    comparison_long = (
+        customer_features[
+            ["retained_customer"] + available_features
         ]
         .copy()
     )
 
-    effect_plot["abs_effect"] = (
-        effect_plot["effect_size"]
-        .abs()
+    comparison_long["customer_status"] = (
+        comparison_long["retained_customer"]
+        .map(
+            {
+                0: "Non-Retained",
+                1: "Retained"
+            }
+        )
     )
 
-    effect_plot = effect_plot.sort_values(
-        "abs_effect",
-        ascending=False
-    ).head(15)
+    # Use standardized medians to compare features
+    comparison_plot = []
 
-    if not effect_plot.empty:
+    for feature in available_features:
 
-        effect_plot["label"] = (
-            effect_plot["variable_1"].astype(str)
-            + " ↔ "
-            + effect_plot["variable_2"].astype(str)
+        values = comparison_long[feature]
+
+        if values.notna().sum() == 0:
+            continue
+
+        median = values.median()
+        q1 = values.quantile(0.25)
+        q3 = values.quantile(0.75)
+
+        iqr = q3 - q1
+
+        if iqr == 0:
+            continue
+
+        temp = comparison_long[
+            [
+                "customer_status",
+                feature
+            ]
+        ].dropna().copy()
+
+        temp["standardized_value"] = (
+            temp[feature] - median
+        ) / iqr
+
+        temp["feature"] = feature
+
+        comparison_plot.append(
+            temp[
+                [
+                    "customer_status",
+                    "standardized_value",
+                    "feature"
+                ]
+            ]
         )
 
-        plt.figure(
-            figsize=(14, 9)
+    if comparison_plot:
+
+        comparison_plot = pd.concat(
+            comparison_plot,
+            ignore_index=True
         )
 
-        sns.barplot(
-            data=effect_plot,
-            x="effect_size",
-            y="label",
-            hue="effect_magnitude",
-            dodge=False
-        )
+        plt.figure(figsize=(13, 7))
 
-        plt.axvline(
-            0,
-            linestyle="--"
+        sns.boxplot(
+            data=comparison_plot,
+            x="feature",
+            y="standardized_value",
+            hue="customer_status"
         )
 
         plt.title(
-            "Top Statistical Effect Sizes"
+            "Retained vs Non-Retained Customer Behavior",
+            fontsize=16,
+            fontweight="bold"
         )
 
-        plt.xlabel(
-            "Signed Effect Size"
-        )
+        plt.xlabel("Feature")
+        plt.ylabel("Relative Value (Median/IQR Scaled)")
 
-        plt.ylabel(
-            "Variable Relationship"
-        )
+        plt.xticks(rotation=30)
 
         save_plot(
-            "13_statistical_effect_sizes.png"
+            "08_retained_vs_nonretained_comparison.png"
         )
 
 
 # ============================================================
-# 41. PLOT 14 - VIF
+# 40. PLOT 09 — RETENTION RATE BY MONTH
 # ============================================================
 
-if (
-    "vif_results" in locals()
-    and not vif_results.empty
+plt.figure(figsize=(11, 6))
+
+sns.lineplot(
+    data=curve_data,
+    x="cohort_index",
+    y="average_retention_pct",
+    marker="o"
+)
+
+plt.title(
+    "Average Cohort Retention Curve",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Months Since Acquisition")
+plt.ylabel("Average Retention (%)")
+
+save_plot(
+    "09_average_retention_curve.png"
+)
+
+
+# ============================================================
+# 41. PLOT 10 — RETAINED CUSTOMER BALANCE
+# ============================================================
+
+status_plot = pd.DataFrame(
+    {
+        "status": [
+            "Retained",
+            "Non-Retained"
+        ],
+        "customers": [
+            retained_customers,
+            non_retained_customers
+        ]
+    }
+)
+
+plt.figure(figsize=(9, 6))
+
+sns.barplot(
+    data=status_plot,
+    x="status",
+    y="customers"
+)
+
+plt.title(
+    "Retained vs Non-Retained Customers",
+    fontsize=16,
+    fontweight="bold"
+)
+
+plt.xlabel("Customer Status")
+plt.ylabel("Customers")
+
+for i, value in enumerate(
+    status_plot["customers"]
 ):
-
-    plt.figure(
-        figsize=(13, 8)
+    plt.text(
+        i,
+        value,
+        f"{value:,}",
+        ha="center",
+        va="bottom"
     )
 
-    sns.barplot(
-        data=vif_results,
-        x="VIF",
-        y="feature",
-        hue="interpretation",
-        dodge=False
+save_plot(
+    "10_retained_customer_balance.png"
+)
+
+
+# ============================================================
+# 42. CORRELATION ANALYSIS
+# ============================================================
+
+correlation_features = [
+    "total_orders",
+    "total_spend",
+    "average_order_value",
+    "total_freight",
+    "active_months",
+    "customer_lifetime_days",
+    "retained_customer",
+]
+
+correlation_features = [
+    col
+    for col in correlation_features
+    if col in customer_features.columns
+]
+
+if len(correlation_features) >= 2:
+
+    corr = customer_features[
+        correlation_features
+    ].corr(
+        method="spearman"
     )
 
-    plt.axvline(
-        5,
-        linestyle="--",
-        label="VIF = 5"
+    corr.to_csv(
+        TABLE_DIR / "16_spearman_customer_correlation.csv"
     )
 
-    plt.axvline(
-        10,
-        linestyle=":",
-        label="VIF = 10"
+    plt.figure(figsize=(10, 8))
+
+    sns.heatmap(
+        corr,
+        annot=True,
+        fmt=".2f",
+        cmap="coolwarm",
+        center=0
     )
 
     plt.title(
-        "Variance Inflation Factor - Multicollinearity"
+        "Customer Behavior — Spearman Correlation",
+        fontsize=16,
+        fontweight="bold"
     )
-
-    plt.xlabel(
-        "VIF"
-    )
-
-    plt.ylabel(
-        "Feature"
-    )
-
-    plt.legend()
 
     save_plot(
-        "14_vif_multicollinearity.png"
+        "11_customer_behavior_correlation.png"
     )
 
 
 # ============================================================
-# 42. PLOT 15 - BEFORE VS AFTER SKEWNESS
+# 43. OUTLIER SUMMARY
 # ============================================================
 
-if not transformation_validation.empty:
+outlier_rows = []
 
-    plot_validation = (
-        transformation_validation
-        .head(15)
-        .copy()
+for feature in [
+    "total_orders",
+    "total_spend",
+    "average_order_value",
+    "total_freight",
+    "active_months",
+    "customer_lifetime_days",
+]:
+
+    if feature not in customer_features.columns:
+        continue
+
+    values = (
+        customer_features[feature]
+        .replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
+        .dropna()
     )
 
-    x = np.arange(
-        len(plot_validation)
+    if len(values) < 10:
+        continue
+
+    q1 = values.quantile(0.25)
+    q3 = values.quantile(0.75)
+
+    iqr = q3 - q1
+
+    lower = q1 - 1.5 * iqr
+    upper = q3 + 1.5 * iqr
+
+    outliers = (
+        (values < lower)
+        |
+        (values > upper)
     )
 
-    width = 0.35
-
-    plt.figure(
-        figsize=(14, 8)
+    outlier_rows.append(
+        {
+            "feature": feature,
+            "q1": q1,
+            "q3": q3,
+            "iqr": iqr,
+            "lower_bound": lower,
+            "upper_bound": upper,
+            "outlier_count": int(outliers.sum()),
+            "outlier_pct": (
+                outliers.mean() * 100
+            ),
+        }
     )
 
-    plt.bar(
-        x - width / 2,
-        plot_validation[
-            "before_skewness"
-        ],
-        width,
-        label="Before"
-    )
+outlier_summary = pd.DataFrame(
+    outlier_rows
+)
 
-    plt.bar(
-        x + width / 2,
-        plot_validation[
-            "after_skewness"
-        ],
-        width,
-        label="After Yeo-Johnson"
-    )
-
-    plt.axhline(
-        0,
-        linestyle="--"
-    )
-
-    plt.axhline(
-        1,
-        linestyle=":"
-    )
-
-    plt.axhline(
-        -1,
-        linestyle=":"
-    )
-
-    plt.xticks(
-        x,
-        plot_validation["column"],
-        rotation=45,
-        ha="right"
-    )
-
-    plt.title(
-        "Skewness Before vs After Yeo-Johnson Transformation"
-    )
-
-    plt.ylabel(
-        "Skewness"
-    )
-
-    plt.legend()
-
-    save_plot(
-        "15_before_after_skewness.png"
-    )
+save_csv(
+    outlier_summary,
+    "17_customer_outlier_summary.csv"
+)
 
 
 # ============================================================
-# 43. FINAL REPORT
+# 44. SKEWNESS ANALYSIS
 # ============================================================
 
-report_lines = []
+skew_rows = []
 
-report_lines.append(
-    "OLIST DATASET - EDA + STATISTICAL TESTING REPORT"
-)
+for feature in [
+    "total_orders",
+    "total_spend",
+    "average_order_value",
+    "total_freight",
+    "active_months",
+    "customer_lifetime_days",
+]:
 
-report_lines.append("=" * 70)
+    if feature not in customer_features.columns:
+        continue
 
-report_lines.append(
-    f"Dataset shape: {df.shape}"
-)
-
-report_lines.append(
-    f"Numeric columns: {len(numeric_cols)}"
-)
-
-report_lines.append(
-    f"Categorical columns: {len(categorical_cols)}"
-)
-
-report_lines.append(
-    f"Datetime columns: {len(datetime_cols)}"
-)
-
-report_lines.append(
-    f"Duplicate rows: {df.duplicated().sum()}"
-)
-
-report_lines.append(
-    f"Missing cells: {int(df.isna().sum().sum())}"
-)
-
-report_lines.append(
-    f"Constant columns: {len(constant_cols)}"
-)
-
-report_lines.append(
-    f"ID-like columns: {len(id_like_cols)}"
-)
-
-report_lines.append("")
-
-report_lines.append(
-    "SKEWNESS SUMMARY"
-)
-
-report_lines.append("-" * 70)
-
-report_lines.append(
-    f"Highly skewed variables: "
-    f"{len(high_skew_cols)}"
-)
-
-report_lines.append("")
-
-report_lines.append(
-    "KURTOSIS SUMMARY"
-)
-
-report_lines.append("-" * 70)
-
-if not kurtosis_table.empty:
-
-    high_kurtosis_count = int(
-        kurtosis_table["high_kurtosis"].sum()
+    values = (
+        customer_features[feature]
+        .replace(
+            [np.inf, -np.inf],
+            np.nan
+        )
+        .dropna()
     )
+
+    if len(values) < 10:
+        continue
+
+    skew_value = values.skew()
+
+    skew_rows.append(
+        {
+            "feature": feature,
+            "skewness": skew_value,
+            "absolute_skewness": abs(skew_value),
+            "interpretation": (
+                "Highly skewed"
+                if abs(skew_value) > 1
+                else "Acceptable"
+            )
+        }
+    )
+
+skewness_summary = pd.DataFrame(
+    skew_rows
+)
+
+save_csv(
+    skewness_summary,
+    "18_skewness_analysis.csv"
+)
+
+
+# ============================================================
+# 45. COHORT STATISTICAL COMPARISON
+# ============================================================
+
+cohort_test_rows = []
+
+cohort_groups = [
+    group["retained_customer"].values
+    for _, group in customer_features.groupby(
+        "cohort_month_date"
+    )
+]
+
+cohort_groups = [
+    g
+    for g in cohort_groups
+    if len(g) >= 2
+]
+
+if len(cohort_groups) >= 2:
+
+    try:
+
+        h_stat, h_p = stats.kruskal(
+            *cohort_groups
+        )
+
+        cohort_test_rows.append(
+            {
+                "test": "Kruskal-Wallis",
+                "variable": "retained_customer",
+                "statistic": h_stat,
+                "p_value": h_p
+            }
+        )
+
+    except Exception:
+        pass
+
+cohort_statistical_tests = pd.DataFrame(
+    cohort_test_rows
+)
+
+save_csv(
+    cohort_statistical_tests,
+    "19_cohort_statistical_tests.csv"
+)
+
+
+# ============================================================
+# 46. BEST / WORST COHORTS
+# ============================================================
+
+valid_cohorts = cohort_comparison[
+    cohort_comparison["customers"] >= 10
+].copy()
+
+if not valid_cohorts.empty:
+
+    best_cohort = valid_cohorts.loc[
+        valid_cohorts["retained_rate_pct"].idxmax()
+    ]
+
+    worst_cohort = valid_cohorts.loc[
+        valid_cohorts["retained_rate_pct"].idxmin()
+    ]
 
 else:
 
-    high_kurtosis_count = 0
+    best_cohort = None
+    worst_cohort = None
 
-report_lines.append(
-    f"Variables with |excess kurtosis| > 3: "
-    f"{high_kurtosis_count}"
-)
 
-report_lines.append("")
+# ============================================================
+# 47. FINAL REPORT
+# ============================================================
 
-report_lines.append(
-    "NORMALITY SUMMARY"
-)
-
-report_lines.append("-" * 70)
-
-if not normality_results.empty:
-
-    normality_results["both_tests_pass"] = (
-        (normality_results["shapiro_p_value"] >= 0.05)
-        &
-        (normality_results["dagostino_p_value"] >= 0.05)
-    )
-
-    passed_normality = int(
-        normality_results[
-            "both_tests_pass"
-        ].sum()
-    )
-
-    report_lines.append(
-        f"Variables passing both normality tests: "
-        f"{passed_normality} / "
-        f"{len(normality_results)}"
-    )
-
-report_lines.append("")
-
-report_lines.append(
-    "MULTICOLLINEARITY SUMMARY"
-)
-
-report_lines.append("-" * 70)
-
-if "vif_results" in locals():
-
-    high_vif = int(
-        (
-            vif_results["VIF"] >= 10
-        ).sum()
-    )
-
-    moderate_vif = int(
-        (
-            (vif_results["VIF"] >= 5)
-            &
-            (vif_results["VIF"] < 10)
-        ).sum()
-    )
-
-    report_lines.append(
-        f"High VIF >= 10: {high_vif}"
-    )
-
-    report_lines.append(
-        f"Moderate VIF 5-10: {moderate_vif}"
-    )
-
-report_lines.append("")
-
-report_lines.append(
-    "STATISTICAL TESTING SUMMARY"
-)
-
-report_lines.append("-" * 70)
-
-if not statistical_tests.empty:
-
-    raw_sig = int(
-        statistical_tests[
-            "significant_raw"
-        ].sum()
-    )
-
-    fdr_sig = int(
-        statistical_tests[
-            "significant_fdr"
-        ].sum()
-    )
-
-    report_lines.append(
-        f"Raw significant results (p < 0.05): "
-        f"{raw_sig}"
-    )
-
-    report_lines.append(
-        f"FDR significant results: "
-        f"{fdr_sig}"
-    )
-
-report_lines.append("")
-
-report_lines.append(
-    "TRANSFORMATION SUMMARY"
-)
-
-report_lines.append("-" * 70)
-
-if not transformation_validation.empty:
-
-    improved = int(
-        (
-            transformation_validation[
-                "after_skewness"
-            ].abs()
-            <
-            transformation_validation[
-                "before_skewness"
-            ].abs()
-        ).sum()
-    )
-
-    report_lines.append(
-        f"Variables improved after Yeo-Johnson: "
-        f"{improved} / "
-        f"{len(transformation_validation)}"
-    )
-
-report_lines.append("")
-
-report_lines.append(
-    "IMPORTANT INTERPRETATION:"
-)
-
-report_lines.append(
-    "Correlation does not prove causation."
-)
-
-report_lines.append(
-    "A statistically significant result does not automatically mean "
-    "the effect is practically important."
-)
-
-report_lines.append(
-    "Large datasets can produce very small p-values, so effect sizes "
-    "should be considered together with p-values."
-)
-
-report_lines.append(
-    "Yeo-Johnson transformation addresses distributional skewness; "
-    "it should not be described as an automatic solution to multicollinearity."
-)
-
-report_path = (
-    REPORT_DIR
-    / "olist_eda_statistical_report.txt"
-)
+report_path = REPORT_DIR / "final_cohort_report.txt"
 
 with open(
     report_path,
     "w",
     encoding="utf-8"
-) as file:
+) as report:
 
-    file.write(
-        "\n".join(report_lines)
+    report.write(
+        "CUSTOMER COHORT RETENTION ANALYSIS\n"
+    )
+
+    report.write(
+        "PART 1 — HISTORICAL RETENTION ANALYSIS\n"
+    )
+
+    report.write("=" * 80 + "\n\n")
+
+    report.write("DATASET\n")
+    report.write("-" * 80 + "\n")
+
+    report.write(
+        f"Dataset file: {DATA_PATH.name}\n"
+    )
+
+    report.write(
+        f"Original rows: {initial_rows:,}\n"
+    )
+
+    report.write(
+        f"Duplicate rows removed: "
+        f"{duplicates_removed:,}\n"
+    )
+
+    report.write(
+        f"Valid purchase rows: "
+        f"{len(retention_df):,}\n"
+    )
+
+    report.write(
+        f"Unique customers: "
+        f"{total_customers:,}\n"
+    )
+
+    report.write(
+        f"Unique orders: "
+        f"{order_df[order_col].nunique():,}\n"
+    )
+
+    report.write(
+        f"Acquisition cohorts: "
+        f"{cohort_sizes.shape[0]:,}\n\n"
+    )
+
+    report.write("RETENTION DEFINITION\n")
+    report.write("-" * 80 + "\n")
+
+    report.write(
+        "A retained customer is a customer who was active "
+        "in more than one calendar month during the observed "
+        "dataset period.\n"
+    )
+
+    report.write(
+        "A non-retained customer was active in only one "
+        "calendar month during the observed dataset period.\n\n"
+    )
+
+    report.write("OVERALL RETENTION\n")
+    report.write("-" * 80 + "\n")
+
+    report.write(
+        f"Retained customers: "
+        f"{retained_customers:,} "
+        f"({retained_pct:.2f}%)\n"
+    )
+
+    report.write(
+        f"Non-retained customers: "
+        f"{non_retained_customers:,} "
+        f"({non_retained_pct:.2f}%)\n\n"
+    )
+
+    report.write("IMPORTANT INTERPRETATION\n")
+    report.write("-" * 80 + "\n")
+
+    report.write(
+        "Retention percentages describe observed historical "
+        "behavior within the available dataset window. "
+        "They should not be interpreted as causal effects "
+        "or proof that a customer will never return after "
+        "the observation period.\n\n"
+    )
+
+    if best_cohort is not None:
+
+        report.write("BEST COHORT\n")
+        report.write("-" * 80 + "\n")
+
+        report.write(
+            f"Cohort: "
+            f"{best_cohort['cohort_month_date']}\n"
+        )
+
+        report.write(
+            f"Customers: "
+            f"{int(best_cohort['customers']):,}\n"
+        )
+
+        report.write(
+            f"Observed retained rate: "
+            f"{best_cohort['retained_rate_pct']:.2f}%\n\n"
+        )
+
+    if worst_cohort is not None:
+
+        report.write("LOWEST COHORT\n")
+        report.write("-" * 80 + "\n")
+
+        report.write(
+            f"Cohort: "
+            f"{worst_cohort['cohort_month_date']}\n"
+        )
+
+        report.write(
+            f"Customers: "
+            f"{int(worst_cohort['customers']):,}\n"
+        )
+
+        report.write(
+            f"Observed retained rate: "
+            f"{worst_cohort['retained_rate_pct']:.2f}%\n\n"
+        )
+
+    report.write("KEY CUSTOMER BEHAVIOR\n")
+    report.write("-" * 80 + "\n")
+
+    if not retained_summary.empty:
+
+        retained_row = retained_summary[
+            retained_summary["retained_customer"] == 1
+        ]
+
+        non_retained_row = retained_summary[
+            retained_summary["retained_customer"] == 0
+        ]
+
+        if not retained_row.empty and not non_retained_row.empty:
+
+            report.write(
+                f"Average orders — Retained: "
+                f"{retained_row.iloc[0]['average_orders']:.2f}\n"
+            )
+
+            report.write(
+                f"Average orders — Non-Retained: "
+                f"{non_retained_row.iloc[0]['average_orders']:.2f}\n"
+            )
+
+            report.write(
+                f"Average spend — Retained: "
+                f"{retained_row.iloc[0]['average_spend']:.2f}\n"
+            )
+
+            report.write(
+                f"Average spend — Non-Retained: "
+                f"{non_retained_row.iloc[0]['average_spend']:.2f}\n"
+            )
+
+            report.write(
+                f"Average active months — Retained: "
+                f"{retained_row.iloc[0]['average_active_months']:.2f}\n"
+            )
+
+            report.write(
+                f"Average active months — Non-Retained: "
+                f"{non_retained_row.iloc[0]['average_active_months']:.2f}\n"
+            )
+
+    report.write("\nSTATISTICAL VALIDATION\n")
+    report.write("-" * 80 + "\n")
+
+    if not statistical_tests.empty:
+
+        significant_features = statistical_tests[
+            statistical_tests[
+                "significant_after_fdr"
+            ]
+        ]["feature"].tolist()
+
+        if significant_features:
+
+            report.write(
+                "Features showing statistically significant "
+                "retained vs non-retained differences after "
+                "FDR correction:\n"
+            )
+
+            for feature in significant_features:
+
+                report.write(
+                    f" - {feature}\n"
+                )
+
+        else:
+
+            report.write(
+                "No tested feature showed a statistically "
+                "significant difference after FDR correction.\n"
+            )
+
+    report.write("\nOUTPUTS\n")
+    report.write("-" * 80 + "\n")
+
+    report.write(
+        f"Tables: {TABLE_DIR}\n"
+    )
+
+    report.write(
+        f"Plots: {PLOT_DIR}\n"
+    )
+
+    report.write(
+        f"Report: {report_path}\n"
     )
 
 
 # ============================================================
-# 44. FINAL CONSOLE SUMMARY
+# 48. FINAL CONSOLE SUMMARY
 # ============================================================
 
+print("\n")
+print("=" * 80)
+print("ANALYSIS COMPLETED SUCCESSFULLY")
+print("=" * 80)
+
+print(f"Customers              : {total_customers:,}")
+print(f"Retained               : {retained_customers:,}")
+print(f"Non-retained           : {non_retained_customers:,}")
+print(f"Retained %             : {retained_pct:.2f}%")
+print(f"Non-retained %         : {non_retained_pct:.2f}%")
+print(f"Cohorts                : {cohort_sizes.shape[0]:,}")
+print(f"Orders                 : {order_df[order_col].nunique():,}")
+
+print("\nOUTPUT DIRECTORIES")
+print("-" * 80)
+print(f"Tables : {TABLE_DIR}")
+print(f"Plots  : {PLOT_DIR}")
+print(f"Report : {REPORT_DIR}")
+
+print("\nMAIN OUTPUTS")
+print("-" * 80)
+
+print("01_data_quality_summary.csv")
+print("02_customer_summary.csv")
+print("03_monthly_customer_activity.csv")
+print("04_customer_features.csv")
+print("05_cohort_sizes.csv")
+print("06_cohort_retention_counts.csv")
+print("07_cohort_retention_rates.csv")
+print("08_cohort_retention_matrix.csv")
+print("09_cohort_retention_count_matrix.csv")
+print("10_retention_curve_summary.csv")
+print("11_new_vs_returning_customers.csv")
+print("12_retained_vs_nonretained_summary.csv")
+print("13_statistical_tests.csv")
+print("14_cohort_comparison.csv")
+print("15_overall_retention_summary.csv")
+print("17_customer_outlier_summary.csv")
+print("18_skewness_analysis.csv")
+print("19_cohort_statistical_tests.csv")
+
+print("\nMAIN PLOTS")
+print("-" * 80)
+
+print("01_monthly_active_customers.png")
+print("02_new_vs_returning_customers.png")
+print("03_customer_order_distribution.png")
+print("04_customer_spend_distribution.png")
+print("05_cohort_size.png")
+print("06_cohort_retention_heatmap.png")
+print("07_retention_curves.png")
+print("08_retained_vs_nonretained_comparison.png")
+print("09_average_retention_curve.png")
+print("10_retained_customer_balance.png")
+print("11_customer_behavior_correlation.png")
+
 print("\n" + "=" * 80)
-print("EDA COMPLETED SUCCESSFULLY")
-print("=" * 80)
-
-print(
-    f"\nPlots saved in:\n{PLOT_DIR}"
-)
-
-print(
-    f"\nTables saved in:\n{TABLE_DIR}"
-)
-
-print(
-    f"\nReport saved in:\n{REPORT_DIR}"
-)
-
-print("\nGenerated plot files:")
-
-for plot_file in sorted(
-    PLOT_DIR.glob("*.png")
-):
-    print(
-        f"  - {plot_file.name}"
-    )
-
-print("\nGenerated table files:")
-
-for table_file in sorted(
-    TABLE_DIR.glob("*.csv")
-):
-    print(
-        f"  - {table_file.name}"
-    )
-
-print("\n" + "=" * 80)
-print("GITHUB COMMANDS")
-print("=" * 80)
-
-print("""
-git status
-git add .
-git commit -m "Improve OLIST EDA and statistical analysis"
-git push origin main
-""")
-
-print("=" * 80)
-print("DONE")
+print("PART 1 — CUSTOMER COHORT RETENTION ANALYSIS COMPLETE")
 print("=" * 80)
 
 

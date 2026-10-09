@@ -1,0 +1,5 @@
+{
+    "selected_model": "Decision Tree",
+    "threshold": 0.6899999999999997,
+    "selection_metric": "F1"
+}

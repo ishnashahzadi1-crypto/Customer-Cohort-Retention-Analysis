@@ -1,0 +1,19 @@
+{
+    "project": "Customer Cohort Retention Analysis",
+    "part": "Part 2 - Customer Retention Prediction",
+    "selected_model": "Decision Tree",
+    "target": "retained",
+    "retention_definition": "At least one purchase during the future prediction window",
+    "observation_window_days": 90,
+    "future_window_days": 90,
+    "test_size": 0.2,
+    "optuna_trials_per_model": 100,
+    "random_state": 42,
+    "selected_threshold": 0.6899999999999997,
+    "final_test_roc_auc": 0.5169711163153785,
+    "final_test_pr_auc": 0.0072236131101406555,
+    "final_test_precision": 0.03,
+    "final_test_recall": 0.047619047619047616,
+    "final_test_f1": 0.03680981595092025,
+    "final_test_balanced_accuracy": 0.5202758261774655
+}

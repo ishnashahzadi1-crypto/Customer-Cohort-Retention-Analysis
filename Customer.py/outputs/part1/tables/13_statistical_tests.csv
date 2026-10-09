@@ -1,0 +1,5 @@
+test,feature,group_1,group_2,statistic,p_value
+Mann-Whitney U,total_spend,Repeat Customer,One-Time Customer,213650991.5,0.0
+Mann-Whitney U,average_order_value,Repeat Customer,One-Time Customer,144149646.5,0.001905060948796039
+Mann-Whitney U,customer_lifetime_days,Repeat Customer,One-Time Customer,238286890.5,0.0
+Mann-Whitney U,days_since_last_purchase,Repeat Customer,One-Time Customer,129596432.0,3.326710515011265e-11

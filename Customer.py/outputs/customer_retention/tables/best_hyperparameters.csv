@@ -1,0 +1,5 @@
+model,best_params
+Logistic Regression,"{""model__C"": 0.08471801418819976}"
+Random Forest,"{""model__class_weight"": ""balanced_subsample"", ""model__max_depth"": 6, ""model__max_features"": 0.43156581270472505, ""model__max_samples"": 0.30031150633640574, ""model__min_samples_leaf"": 60, ""model__n_estimators"": 112}"
+Extra Trees,"{""model__class_weight"": ""balanced_subsample"", ""model__max_depth"": 8, ""model__max_features"": 0.2099021346475079, ""model__max_samples"": 0.5056937753654447, ""model__min_samples_leaf"": 103, ""model__n_estimators"": 82}"
+Hist Gradient Boosting,"{""model__class_weight"": ""balanced"", ""model__l2_regularization"": 1.2311503632415641, ""model__learning_rate"": 0.025575311242654015, ""model__max_depth"": 2, ""model__max_iter"": 67, ""model__max_leaf_nodes"": 18, ""model__min_samples_leaf"": 84}"

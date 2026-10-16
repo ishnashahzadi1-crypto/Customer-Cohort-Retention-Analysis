@@ -1,8 +1,0 @@
-metric,value
-rows,68940.0
-features_before_modeling,19.0
-retained_customers,457.0
-non_retained_customers,68483.0
-retention_rate,0.006628952712503626
-observation_window_days,90.0
-future_window_days,90.0
